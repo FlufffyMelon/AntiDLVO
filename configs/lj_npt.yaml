@@ -1,0 +1,58 @@
+# LJ units NPT example (single-component)
+experiment:
+  name: "lj_npt_press_${simulation.pressure}_T_${simulation.temperature}"
+  # name: "lj_npt_test"
+  results_dir: "results"
+  description: "LJ fluid in NPT ensemble (LJ units)"
+
+debug: false
+
+simulation:
+  ensemble: "NPT"
+  temperature: 0.9
+  pressure: 0.5        # LJ pressure
+  n_steps: 100000
+
+system:
+  n_atoms: 512
+  initial_capacity: 512
+  init:
+    # mode: "random"        # options: random, uniform
+    # min_distance: 1     # used in random mode
+    mode: "uniform"
+  box: [10, 10, 10]
+  pbc: [true, true, true]
+
+units:
+  system: "lj"
+
+types:
+  LJ:
+    name: "LJ"
+    mass: 1.0
+    charge: 0.0
+    fraction: 1.0
+
+pairs:
+  - types: [LJ, LJ]
+    forces:
+      - {
+        kind: LJ,
+        sigma: 1,
+        epsilon: 1,
+        cutoff: 2.5
+      }
+
+sampler:
+  actions:
+    - action: "translate"
+      probability: 0.8
+    - action: "volume"
+      probability: 0.2
+  max_displacement: 0.1
+  max_volume_scale: 0.1
+  # volume moves use Sampler default max_volume_scale=0.1 (10% side length)
+
+logger:
+  log_interval: 10
+  xyz_interval: 200

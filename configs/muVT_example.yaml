@@ -1,0 +1,71 @@
+# Grand Canonical (muVT) Monte Carlo simulation configuration
+experiment:
+  name: "argon_helium_muVT"
+  results_dir: "results"
+  description: "Grand Canonical simulation of Ar/He mixture with LJ and optional Coulomb"
+
+simulation:
+  ensemble: "muVT"  # Grand Canonical ensemble
+  temperature: 120.0  # K (low temperature for liquid-like behavior)
+  mu: -8.0  # chemical potential (kJ/mol)
+  n_steps: 2000
+
+system:
+  n_atoms: 20  # Starting atoms; insert/delete will vary N
+  initial_capacity: 256
+  box: [6.0, 6.0, 6.0]  # nm
+  pbc: [true, true, true]
+
+units:
+  system: "standard"
+
+# Define two atom types and initial composition
+# Fractions allocate initial atoms; Sampler insert/delete currently uses type 0 by default
+types:
+  Ar:
+    file: "configs/lj_params/argon.yaml"
+    name: "Ar"
+    fraction: 0.6
+  He:
+    # Example helium parameters inline (provide your own file if desired)
+    # Typical LJ for helium (rough): sigma ~ 0.257 nm, epsilon ~ 0.084 kJ/mol
+    name: "He"
+    sigma: 0.257
+    epsilon: 0.084
+    mass: 4.0026
+    charge: 0.0
+    fraction: 0.4
+
+# Pair interactions
+pairs:
+  - types: [Ar, Ar]
+    forces:
+      - { kind: LJ, cutoff: 2.5 }
+      # - { kind: Coulomb, cutoff: 2.5, dielectric: 1.0 }
+  - types: [He, He]
+    forces:
+      - { kind: LJ, cutoff: 2.5 }
+  - types: [Ar, He]
+    forces:
+      - { kind: LJ, cutoff: 2.5 }
+    # overrides:  # optional cross override instead of mixing
+    #   LJ: { sigma: 0.30, epsilon: 0.40 }
+
+# External field acting only on Ar (type-specific one-body)
+# one_body:
+#   - type: Ar
+#     field: { kind: uniform, gradient: [0.0, 0.0, 0.1] }
+
+sampler:
+  actions:
+    - action: "translate"
+      probability: 0.7
+    - action: "insert"
+      probability: 0.15
+    - action: "delete"
+      probability: 0.15
+  max_displacement: 0.05
+
+logger:
+  log_interval: 50
+  xyz_interval: 100

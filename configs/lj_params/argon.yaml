@@ -1,0 +1,9 @@
+# Lennard-Jones parameters for different atom types
+# Using Gromacs-compatible units: sigma in nm, epsilon in kJ/mol
+
+lj_parameters:
+  Ar:  # Argon
+    sigma: 0.3405  # nm
+    epsilon: 0.9959  # kJ/mol
+    mass: 39.948  # amu
+    charge: 0.0

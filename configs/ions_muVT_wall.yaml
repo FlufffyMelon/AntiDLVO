@@ -1,0 +1,108 @@
+# LJ units muVT example with external wall potential (single-component)
+experiment:
+  # name: "lj_muVT_wall_h_${system.h}"
+  name: "ions_muVT_wall_test"
+  results_dir: "results"
+  description: "Ions in muVT ensemble under external wall potential (LJ units)"
+
+simulation:
+  ensemble: "muVT"
+  temperature: 1.2
+  mu: -2.477
+  n_steps: 100000
+
+system:
+  n_atoms: 256
+  initial_capacity: 256
+  init:
+    # mode: "random"        # options: random, uniform
+    # min_distance: 1     # used in random mode
+    mode: "uniform"
+    padding: [0.0, 0.0, 0.7]
+  h: 7.0
+  box:
+    - 10
+    - 10
+    - ${system.h}
+  pbc: [true, true, false]
+
+ewald:
+  alpha: 0.25
+  real_cut: 4.0
+  n_c: 4
+  dielectric: 1.0
+  z_scale_factor: 4.0  # Scale factor for z dimension to avoid periodic interactions
+  dipole_correction: true
+
+units:
+  system: "lj"
+
+types:
+  Na:
+    name: "Na"
+    mass: 1.0
+    charge: 1.0
+    fraction: 0.5
+  Cl:
+    name: "Cl"
+    mass: 0.5
+    charge: -1.0
+    fraction: 0.5
+
+pairs:
+  # Pairwise LJ interaction between the single type with standard cutoff
+  - types: [Na, Na]
+    forces:
+      - {
+        kind: LJ,
+        sigma: 1,
+        epsilon: 1,
+        cutoff: 2.5
+      }
+      - { kind: ewald }
+  - types: [Cl, Cl]
+    forces:
+      - {
+        kind: LJ,
+        sigma: 0.85,
+        epsilon: 0.6,
+        cutoff: 2.5
+      }
+      - { kind: ewald }
+  - types: [Na, Cl]
+    forces:
+      - {
+        kind: LJ,
+        sigma: 0.925,
+        epsilon: 1.27,
+        cutoff: 2.5
+      }
+      - { kind: ewald }
+
+one_body:
+  - type: Na
+    forces:
+      - { kind: wall, style: bottom }
+      - { kind: wall, style: top }
+  - type: Cl
+    forces:
+      - { kind: wall, style: bottom }
+      - { kind: wall, style: top }
+
+sampler:
+  actions:
+    - action: "translate"
+      probability: 0.7
+    - action: "insert"
+      probability: 0.15
+    - action: "delete"
+      probability: 0.15
+  max_displacement: 0.1
+
+  force_recompute: false
+
+debug: false
+
+logger:
+  log_interval: 10
+  xyz_interval: 10

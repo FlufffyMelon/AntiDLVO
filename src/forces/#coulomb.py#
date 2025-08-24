@@ -1,0 +1,90 @@
+import numpy as np
+from typing import Dict, Tuple
+from units import Units
+from .basic_force import Force
+
+
+class Coulomb(Force):
+    def __init__(
+        self, units: Units = None, cutoff: float = 2.5, dielectric: float = 1.0
+    ):
+        super().__init__(units)
+        self.cutoff = cutoff
+        self.default_dielectric = dielectric
+        if units and units.system_name == "lj":
+            self.coulomb_constant = 1.0
+        else:
+            self.coulomb_constant = 138.935
+
+    def __call__(
+        self,
+        pos: np.ndarray,
+        r_ij: np.ndarray,
+        type1: int,
+        types2: np.ndarray,
+        charge1: float,
+        charges2: np.ndarray,
+        system=None,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        N = r_ij.shape[0]
+        energies = np.zeros(N)
+        forces = np.zeros((N, 3))
+
+        if abs(charge1) < 1e-12:
+            return np.sum(energies), forces
+
+        # Calculate distances
+        r = np.linalg.norm(r_ij, axis=1)
+        rc = float(self.cutoff)
+        k = float(self.coulomb_constant)
+
+        unique_t2 = np.unique(types2)
+        for t2 in unique_t2:
+            params = self._get_pair_parameters(type1, int(t2))
+            dielectric = (
+                params["dielectric"]
+                if params and "dielectric" in params
+                else self.default_dielectric
+            )
+            mask = types2 == t2
+            r_t = r[mask]
+            r_ij_t = r_ij[mask]
+            q2_t = charges2[mask]
+
+            with np.errstate(divide="ignore", invalid="ignore"):
+                m = (r_t > 1e-12) & (r_t < rc) & (np.abs(q2_t) > 1e-12)
+                inv_r = np.where(m, 1.0 / r_t, 0.0)
+                inv_r3 = np.where(m, 1.0 / (r_t**3), 0.0)
+
+                # Energy calculation
+                e = (k * charge1 * q2_t) / dielectric * inv_r
+                energies[mask] = e
+
+                # Force calculation
+                force_vec = (
+                    (k * charge1 * q2_t[:, np.newaxis] / dielectric)
+                    * inv_r3[:, np.newaxis]
+                    * r_ij_t
+                )
+                forces[mask] = force_vec
+
+        # Apply reduced Bjerrum length scaling for LJ units
+        if system is not None and system.ewald_handler:
+            lB_star = system.ewald_handler.lB_star
+            energies *= lB_star
+            forces *= lB_star
+
+        return np.sum(energies), forces
+
+    def _get_pair_parameters(self, type1: int, type2: int) -> Dict[str, float]:
+        pair_key = (min(type1, type2), max(type1, type2))
+        if pair_key in self.parameters:
+            return self.parameters[pair_key]
+        if type1 in self.parameters and type2 in self.parameters:
+            params1 = self.parameters[type1]
+            params2 = self.parameters[type2]
+            dielectric_mixed = 0.5 * (
+                params1["dielectric"] + params2["dielectric"]
+            )  # simple average
+            return {"dielectric": dielectric_mixed}
+        return None

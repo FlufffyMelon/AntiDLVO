@@ -1,0 +1,65 @@
+# Main simulation configuration (multicomponent-capable)
+experiment:
+  name: "argon_nvt"  # Experiment name for folder creation
+  results_dir: "results"  # Base results directory
+  description: "NVT simulation with multicomponent topology support"
+
+simulation:
+  ensemble: "NVT"  # Options: NVT, NPT, muVT
+  temperature: 300.0  # K
+  # pressure: 1.0  # bar (for NPT)
+  # mu: -10.0  # chemical potential (for muVT)
+  n_steps: 1000
+
+system:
+  n_atoms: 10
+  initial_capacity: 128
+  box: [10.0, 10.0, 10.0]  # nm
+  pbc: [true, true, true]
+
+units:
+  system: "standard"  # Options: "standard", "lj"
+
+# New schema: define atom types
+# Per-type file can provide sigma, epsilon, mass, charge defaults
+# You may also specify them inline to override
+# Fractions allocate initial atoms across types; alternatively set explicit counts per type
+types:
+  Ar:
+    file: "configs/lj_params/argon.yaml"
+    name: "Ar"
+    # sigma: 0.3405
+    # epsilon: 0.9959
+    # mass: 39.948
+    # charge: 0.0
+    fraction: 1.0
+  # He:
+  #   file: "configs/lj_params/helium.yaml"
+  #   name: "He"
+  #   fraction: 0.0
+
+# Pair interactions. If omitted, default is LJ on all pairs using Lorentz-Berthelot mixing, and optional Coulomb.
+# Here we show explicit form equivalent to single-component LJ.
+pairs:
+  - types: [Ar, Ar]
+    forces:
+      - { kind: LJ, cutoff: 2.5 }
+      # - { kind: Coulomb, cutoff: 2.5, dielectric: 1.0 }
+    # overrides:
+    #   LJ: { sigma: 0.3405, epsilon: 0.9959 }
+
+# Optional one-body forces; applied per type
+# one_body:
+#   - type: Ar
+#     field: { kind: harmonic, k: 5.0, center: [0.0, 0.0, 0.0] }
+
+sampler:
+  actions:
+    - action: "translate"
+      probability: 1.0
+  max_displacement: 0.1  # nm
+
+logger:
+  log_interval: 100
+  xyz_interval: 100
+  # Note: log_file and xyz_file paths will be auto-generated based on experiment config

@@ -1,0 +1,9 @@
+# Lennard-Jones parameters for Helium
+# Using Gromacs-compatible units: sigma in nm, epsilon in kJ/mol
+
+lj_parameters:
+  He:
+    sigma: 0.257  # nm (approximate)
+    epsilon: 0.084  # kJ/mol (approximate)
+    mass: 4.0026  # amu
+    charge: 0.0
