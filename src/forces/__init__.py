@@ -1,5 +1,6 @@
 from .basic_force import Force, OneBodyForce
 from .ewald_particle import EwaldReal
+from .coulomb import Coulomb
 from .lennard_jones import LennardJones
 from .huggins_mayer import HugginsMayer
 
@@ -11,6 +12,7 @@ __all__ = [
     "Force",
     "OneBodyForce",
     "EwaldReal",
+    "Coulomb",
     "LennardJones",
     "HugginsMayer",
     # "Coulomb",

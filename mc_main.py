@@ -90,17 +90,24 @@ def run_simulation(config_file: str, overrides=None):
         total_runtime = time.perf_counter() - t0
 
         final_energy = topology.get_energy(system)
+        final_virial = system.virial
         print(f"Final energy: {final_energy:.6f} {units.energy_label}")
         print(f"Final number of atoms: {system.N}")
 
         # Recompute full energy from scratch for verification
         topology.recompute_caches(system)
-        recomputed_energy = topology.get_energy(system)
+        recomputed_energy = system.potential_energy
+        recomputed_virial = system.virial
+
         print(
             f"Final energy (recomputed): {recomputed_energy:.6f} {units.energy_label}"
         )
+        print(f"Final virial: {final_virial:.6f}")
         print(
             f"Energy delta (cached -> recomputed): {(recomputed_energy - final_energy):.6f} {units.energy_label}"
+        )
+        print(
+            f"Virial delta (cached -> recomputed): {(recomputed_virial - final_virial):.6f} {units.pressure_label}"
         )
         logger.log_info(
             f"Final energy (recomputed): {recomputed_energy:.6f} {units.energy_label}; "

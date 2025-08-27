@@ -111,7 +111,8 @@ class StandardUnits(UnitsSystem):
 
     @property
     def pressure_label(self) -> str:
-        return "bar"
+        # return "bar"
+        return "kJ/mol/nm^3"
 
 
 class Units:

@@ -93,7 +93,7 @@ class Logger:
                 f"temperature={self.units.temperature_label}, pressure={self.units.pressure_label}\n"
             )
             f.write(
-                "Columns: Step, Time(s), N_atoms, E_pot, E_tail, E_total, Temperature, Volume, Density, P_conf, P_tail, P_total, Mu_id, Acceptance_ratio, Action_ratios\n"
+                "Columns: Step, Time(s), N_atoms, E_pot, E_tail, E_total, Temperature, Volume, Density, P_id, P_vir, P_tail, P_total, Mu_id, Acceptance_ratio, Action_ratios\n"
             )
 
     def _init_xyz_file(self) -> None:
@@ -139,7 +139,8 @@ class Logger:
         energy = e_dict["energy"]
         energy_tail = e_dict["energy_tail"]
         energy_total = e_dict["energy_total"]
-        pressure_conf = p_dict["pressure"]
+        pressure_ideal = p_dict["pressure_ideal"]
+        pressure_virial = p_dict["pressure_virial"]
         pressure_tail = p_dict["pressure_tail"]
         pressure_total = p_dict["pressure_total"]
 
@@ -166,7 +167,7 @@ class Logger:
         line = (
             f"{step:>10d} {current_time:>10.2f} {system.N:>8d} "
             f"{energy:>15.6e} {energy_tail:>15.6e} {energy_total:>15.6e} {system.temp:>10.2f} {volume:>12.4f} "
-            f"{density:>12.6f} {pressure_conf:>12.6f} {pressure_tail:>12.6f} {pressure_total:>12.6f} {mu_id:>15.6e} {acceptance_total:>12.4f} {action_ratios}"
+            f"{density:>12.6f} {pressure_ideal:>12.6f} {pressure_virial:>12.6f} {pressure_tail:>12.6f} {pressure_total:>12.6f} {mu_id:>15.6e} {acceptance_total:>12.4f} {action_ratios}"
         )
         if solvation_force is not None:
             line += f" wp={solvation_force:.6e}"
@@ -187,7 +188,8 @@ class Logger:
                 "temperature",
                 "volume",
                 "density",
-                "pressure_conf",
+                "pressure_ideal",
+                "pressure_virial",
                 "pressure_tail",
                 "pressure_total",
                 "mu_id",
@@ -216,7 +218,8 @@ class Logger:
             "temperature": system.temp,
             "volume": volume,
             "density": density,
-            "pressure_conf": pressure_conf,
+            "pressure_ideal": pressure_ideal,
+            "pressure_virial": pressure_virial,
             "pressure_tail": pressure_tail,
             "pressure_total": pressure_total,
             "mu_id": mu_id,

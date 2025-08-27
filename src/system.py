@@ -167,15 +167,6 @@ class System:
 
         self.N += 1
 
-        # Update Ewald structure factors if enabled
-        if self.ewald_handler:
-            self.ewald_handler.update_structure_factors(
-                self.positions[: self.N], self.charges[: self.N]
-            )
-            self.ewald_handler.update_dipole_moment(
-                self.positions[: self.N], self.charges[: self.N]
-            )
-
         return atom_id
 
     def remove_atom(self, atom_id: int) -> None:

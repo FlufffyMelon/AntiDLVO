@@ -85,14 +85,22 @@ def create_system(cfg, units: Units) -> System:
         n_c = cfg.ewald.get("n_c", None)
         dielectric = cfg.ewald.get("dielectric", None)
         z_scale_factor = cfg.ewald.get("z_scale_factor", 1.0)
+        dipole_correction = cfg.ewald.get("dipole_correction", False)
 
-        if not (alpha is None or real_cut is None or n_c is None or dielectric is None):
+        if not (
+            alpha is None
+            or real_cut is None
+            or n_c is None
+            or dielectric is None
+            or dipole_correction is None
+        ):
             ewald_handler = EwaldHandler(
                 alpha=alpha,
                 real_cut=real_cut,
                 n_c=n_c,
                 dielectric=dielectric,
                 z_scale_factor=z_scale_factor,
+                dipole_correction=dipole_correction,
                 units=units,
             )
 
@@ -138,6 +146,7 @@ def setup_initial_configuration(
     Modes (cfg.system.init.mode):
       - "random": random positions with minimum separation (cfg.system.init.min_distance)
       - "uniform": positions on a uniform 3D grid covering the box
+      - "SCC": simple cubic lattice with alternating K and Cl atoms
 
     atom_types_spec format:
       {
@@ -193,62 +202,196 @@ def setup_initial_configuration(
     init_mode = init_mode or "random"
 
     if init_mode == "uniform":
-        # Build a uniform grid covering the box and place atoms of all types
-        total_N = sum(counts.values())
-        Lx, Ly, Lz = system.box
-        # Effective lengths after padding (only for initial placement)
-        eff_L = np.maximum([Lx, Ly, Lz] - 2.0 * padding, 1e-9)
-        origin = padding
-        # Choose grid divisions to make cell sizes as isotropic as possible
-        nx = ny = nz = 1
-        # Increment along the axis with the largest current cell size until we have enough cells
-        while nx * ny * nz < total_N:
-            cell_sizes = np.array([eff_L[0] / nx, eff_L[1] / ny, eff_L[2] / nz])
-            axis = int(np.argmax(cell_sizes))
-            if axis == 0:
-                nx += 1
-            elif axis == 1:
-                ny += 1
-            else:
-                nz += 1
-        # Generate grid points centered in cells
-        xs = origin[0] + (np.arange(nx) + 0.5) * (eff_L[0] / nx)
-        ys = origin[1] + (np.arange(ny) + 0.5) * (eff_L[1] / ny)
-        zs = origin[2] + (np.arange(nz) + 0.5) * (eff_L[2] / nz)
-        grid = np.array(np.meshgrid(xs, ys, zs, indexing="ij"))
-        grid = grid.reshape(3, -1).T  # (nx*ny*nz, 3)
-        positions_list = grid[:total_N]
+        _init_uniform_configuration(
+            system, counts, atom_types_spec, topology, type_names, padding
+        )
+    elif init_mode == "SCC":
+        _init_scc_configuration(
+            system, counts, atom_types_spec, topology, type_names, padding
+        )
+    elif init_mode == "random":
+        _init_random_configuration(
+            system, counts, atom_types_spec, topology, type_names, min_distance, padding
+        )
+    else:
+        raise ValueError(f"Unknown init mode: {init_mode}")
 
-        # Prepare a type assignment list according to counts
-        type_id_seq: List[int] = []
-        name_seq: List[str] = []
-        charge_seq: List[float] = []
-        mass_seq: List[float] = []
-        for t_name in type_names:
-            n_t = counts[t_name]
-            if n_t <= 0:
-                continue
-            type_id = topology.type_name_to_id.get(t_name, 0)
-            spec = atom_types_spec[t_name]
-            mass = float(spec.get("mass", 1.0))
-            charge = float(spec.get("charge", 0.0))
-            name = str(spec.get("name", t_name))
-            type_id_seq.extend([type_id] * n_t)
-            name_seq.extend([name] * n_t)
-            charge_seq.extend([charge] * n_t)
-            mass_seq.extend([mass] * n_t)
+    if system.ewald_handler:
+        system.ewald_handler.update_structure_factors(
+            system.positions[: system.N],
+            system.charges[: system.N],
+        )
+        system.ewald_handler.update_dipole_moment(
+            system.positions[: system.N],
+            system.charges[: system.N],
+        )
 
-        # If order matters, currently we place in type order. Could shuffle lightly to avoid type clusters.
-        for i in range(total_N):
-            system.add_atom(
-                position=positions_list[i],
-                atom_type=type_id_seq[i],
-                name=name_seq[i],
-                charge=charge_seq[i],
-                mass=mass_seq[i],
-            )
-        return
 
+def _init_uniform_configuration(
+    system: System,
+    counts: dict,
+    atom_types_spec: dict,
+    topology: Topology,
+    type_names: List[str],
+    padding: np.ndarray,
+):
+    # Build a uniform grid covering the box and place atoms of all types
+    total_N = int(sum(counts.values()))
+    Lx, Ly, Lz = system.box
+    # Effective lengths after padding (only for initial placement)
+    eff_L = np.maximum([Lx, Ly, Lz] - 2.0 * padding, 1e-9)
+    origin = padding
+    # Choose grid divisions to make cell sizes as isotropic as possible
+    nx = ny = nz = 1
+    # Increment along the axis with the largest current cell size until we have enough cells
+    while nx * ny * nz < total_N:
+        cell_sizes = np.array([eff_L[0] / nx, eff_L[1] / ny, eff_L[2] / nz])
+        axis = int(np.argmax(cell_sizes))
+        if axis == 0:
+            nx += 1
+        elif axis == 1:
+            ny += 1
+        else:
+            nz += 1
+    # Generate grid points centered in cells
+    xs = origin[0] + (np.arange(nx) + 0.5) * (eff_L[0] / nx)
+    ys = origin[1] + (np.arange(ny) + 0.5) * (eff_L[1] / ny)
+    zs = origin[2] + (np.arange(nz) + 0.5) * (eff_L[2] / nz)
+    grid = np.array(np.meshgrid(xs, ys, zs, indexing="ij"))
+    grid = grid.reshape(3, -1).T  # (nx*ny*nz, 3)
+    positions_list = grid[:total_N]
+    # Shuffle positions to avoid type clustering
+    shuffle_idx = np.random.permutation(total_N)
+    positions_list = positions_list[shuffle_idx, :]
+
+    # Prepare a type assignment list according to counts
+    type_id_seq: List[int] = []
+    name_seq: List[str] = []
+    charge_seq: List[float] = []
+    mass_seq: List[float] = []
+    for t_name in type_names:
+        n_t = counts[t_name]
+        if n_t <= 0:
+            continue
+        type_id = topology.type_name_to_id.get(t_name, 0)
+        spec = atom_types_spec[t_name]
+        mass = float(spec.get("mass", 1.0))
+        charge = float(spec.get("charge", 0.0))
+        name = str(spec.get("name", t_name))
+        type_id_seq.extend([type_id] * n_t)
+        name_seq.extend([name] * n_t)
+        charge_seq.extend([charge] * n_t)
+        mass_seq.extend([mass] * n_t)
+
+    for i in range(total_N):
+        system.add_atom(
+            position=positions_list[i],
+            atom_type=type_id_seq[i],
+            name=name_seq[i],
+            charge=charge_seq[i],
+            mass=mass_seq[i],
+        )
+
+
+def _init_scc_configuration(
+    system: System,
+    counts: dict,
+    atom_types_spec: dict,
+    topology: Topology,
+    type_names: List[str],
+    padding: np.ndarray,
+):
+    """Initialize simple cubic lattice configuration for KCl with alternating atoms."""
+    if len(type_names) != 2:
+        raise ValueError("SCC mode requires exactly two atom types")
+
+    total_N = int(sum(counts.values()))
+    if total_N % 2 != 0:
+        raise ValueError("SCC mode requires even number of atoms")
+
+    # Check if we can form a perfect simple cubic lattice
+    atoms_per_unit_cell = 2  # SCC has 2 atoms per unit cell (K and Cl)
+    if total_N % atoms_per_unit_cell != 0:
+        raise ValueError(
+            f"SCC mode requires total atoms to be divisible by {atoms_per_unit_cell}"
+        )
+
+    # Calculate unit cells needed
+    unit_cells = total_N // atoms_per_unit_cell
+    # Find cube root to determine lattice dimensions
+    lattice_dim = int(round(unit_cells ** (1 / 3)))
+    if lattice_dim**3 != unit_cells:
+        raise ValueError(f"Cannot form perfect cubic SCC lattice with {total_N} atoms")
+
+    Lx, Ly, Lz = system.box
+    # Effective lengths after padding
+    eff_L = np.maximum([Lx, Ly, Lz] - 2.0 * padding, 1e-9)
+    origin = padding
+
+    # SCC lattice parameter (distance between unit cells)
+    a = min(eff_L) / lattice_dim
+
+    # Get type properties
+    type_props = {}
+    for t_name in type_names:
+        type_id = topology.type_name_to_id.get(t_name, 0)
+        spec = atom_types_spec[t_name]
+        type_props[t_name] = {
+            "id": type_id,
+            "mass": float(spec.get("mass", 1.0)),
+            "charge": float(spec.get("charge", 0.0)),
+            "name": str(spec.get("name", t_name)),
+        }
+
+    # Generate SCC lattice positions with alternating K and Cl
+    atom_count = 0
+    for i in range(lattice_dim):
+        for j in range(lattice_dim):
+            for k in range(lattice_dim):
+                # Unit cell origin
+                cell_origin = origin + a * np.array([i, j, k])
+
+                # Place 2 atoms in this unit cell (K and Cl)
+                for basis_idx in range(2):
+                    if atom_count >= total_N:
+                        break
+
+                    # Calculate position (K at origin, Cl at center)
+                    if basis_idx == 0:
+                        position = cell_origin  # K atom at origin
+                    else:
+                        position = cell_origin + 0.5 * a * np.array(
+                            [1, 1, 1]
+                        )  # Cl atom at center
+
+                    # Determine atom type based on position (alternating pattern)
+                    # Use sum of coordinates to determine type
+                    coord_sum = i + j + k + basis_idx
+                    type_idx = coord_sum % 2
+                    t_name = type_names[type_idx]
+
+                    # Add atom to system
+                    props = type_props[t_name]
+                    system.add_atom(
+                        position=position,
+                        atom_type=props["id"],
+                        name=props["name"],
+                        charge=props["charge"],
+                        mass=props["mass"],
+                    )
+
+                    atom_count += 1
+
+
+def _init_random_configuration(
+    system: System,
+    counts: dict,
+    atom_types_spec: dict,
+    topology: Topology,
+    type_names: List[str],
+    min_distance: float,
+    padding: np.ndarray,
+):
     # Default: random placement with min distance
     box = system.box
     eff_L = np.maximum(box - 2.0 * padding, 1e-9)
@@ -311,10 +454,7 @@ def _configure_pair_force(force_name: str, params: dict, units: Units):
             )
         else:
             raise ValueError(f"LJ parameters not provided for {force_name}")
-    # if name in ("coulomb", "electrostatic"):
-    #     return Coulomb(units=units)
     if name in ("ewald", "ewald_sum", "ewald_summation"):
-        # The EwaldReal class doesn't need parameters here - it gets them from the system
         return EwaldReal(units=units)
     if name in ("huggins_mayer", "huggins_mayer_potential"):
         if (
@@ -396,58 +536,6 @@ def create_topology(cfg, units: Units) -> Topology:
                 f = _configure_pair_force(fcfg.get("kind", ""), fcfg, units)
                 if f is None:
                     raise ValueError(f"Unknown force kind in pair {tnames}: {fcfg}")
-                # Set base per-type params for mixing
-                # if isinstance(f, LennardJones):
-                #     p = {}
-                #     if (
-                #         fcfg.get("sigma") is not None
-                #         and fcfg.get("epsilon") is not None
-                #     ):
-                #         p[(min(t1, t2), max(t1, t2))] = {
-                #             "sigma": float(fcfg.get("sigma")),
-                #             "epsilon": float(fcfg.get("epsilon")),
-                #         }
-                #     f.set_parameters(p)
-                # elif isinstance(f, Coulomb):
-                #     # Allow per-type dielectric and per-pair override
-                #     p = {}
-                #     for tid, props in per_type_params.items():
-                #         if "dielectric" in types_cfg[topology.type_id_to_name[tid]]:
-                #             p[tid] = {
-                #                 "dielectric": float(
-                #                     types_cfg[topology.type_id_to_name[tid]].get(
-                #                         "dielectric"
-                #                     )
-                #                 )
-                #             }
-                #     o = overrides.get("Coulomb") or overrides.get("coulomb")
-                #     if o is not None:
-                #         p[(min(t1, t2), max(t1, t2))] = {
-                #             "dielectric": float(
-                #                 o.get("dielectric", fcfg.get("dielectric", 1.0))
-                #             )
-                #         }
-                #     if p:
-                #         f.set_parameters(p)
-                # elif isinstance(f, HugginsMayer):
-                #     p = {}
-                #     if (
-                #         fcfg.get("sigma") is not None
-                #         and fcfg.get("b") is not None
-                #         and fcfg.get("B") is not None
-                #         and fcfg.get("c") is not None
-                #         and fcfg.get("d") is not None
-                #         and fcfg.get("cutoff") is not None
-                #     ):
-                #         p[(min(t1, t2), max(t1, t2))] = {
-                #             "sigma": float(fcfg.get("sigma")),
-                #             "b": float(fcfg.get("b")),
-                #             "B": float(fcfg.get("B")),
-                #             "c": float(fcfg.get("c")),
-                #             "d": float(fcfg.get("d")),
-                #             "cutoff": float(fcfg.get("cutoff")),
-                #         }
-                #     f.set_parameters(p)
                 force_objs.append(f)
 
             # If multiple forces on same pair, we can just add each; Topology sums them.

@@ -1,0 +1,102 @@
+# LJ units muVT example with external wall potential (single-component)
+experiment:
+  # name: "KCl_nvt_v_${system.v}"
+  name: "KCl_nvt_test"
+  results_dir: "results"
+  description: "KCl liquid in nvt ensemble"
+
+units:
+  system: "standard"
+
+simulation:
+  ensemble: "NVT"
+  temperature: 1045 # K
+  n_steps: 500000 # 100000
+
+system:
+  n_atoms: 1024
+  initial_capacity: 1024
+  init:
+    # mode: "random"        # options: random, uniform
+    # min_distance: 1     # used in random mode
+    mode: "SCC"
+    # padding: [0.0, 0.0, 0.7]
+  v: 48.80 # cm^3 / mol
+  L: ${eval:"(1.66054e-3 * ${system.v} * ${system.n_atoms})**(1/3)"}
+  box:
+    - ${system.L}
+    - ${system.L}
+    - ${system.L}
+  pbc: [true, true, true]
+
+ewald:
+  # alpha: ${eval:"3.1 / (${system.L} * 0.45)"}
+  # alpha: ${eval:"3.5 / (${system.L} * 0.45)"}
+  # alpha: ${eval:"3.5 / 1.4"}
+  alpha: 1.2
+  # real_cut: ${eval:"${system.L} * 0.45"}
+  real_cut: 1.4
+  n_c: 3
+  # n_c: ${eval:"7.5 * ${ewald.alpha} * ${system.L} / 6.2831853072"}
+  dielectric: 1.0
+  z_scale_factor: 1.0  # Scale factor for z dimension to avoid periodic interactions
+  dipole_correction: false
+
+types:
+  K:
+    name: "K"
+    mass: 39.0983 # amu
+    charge: 1.0 # e
+    count: 512
+  Cl:
+    name: "Cl"
+    mass: 35.453 # amu
+    charge: -1.0 # e
+    count: 512
+
+pairs:
+  # Pairwise LJ interaction between the single type with standard cutoff
+  - types: [K, K]
+    forces:
+      - kind: huggins_mayer
+        sigma: 0.2926
+        b: 25.474
+        B: 29.7
+        c: -1.463e-3
+        d: -1.445e-5
+        cutoff: ${eval:"${system.L} * 0.45"}
+      - kind: ewald
+  - types: [Cl, Cl]
+    forces:
+      - kind: huggins_mayer
+        sigma: 0.3170
+        b: 15.2360
+        B: 29.7
+        c: -7.49757e-3
+        d: -1.50554e-4
+        cutoff: ${eval:"${system.L} * 0.45"}
+      - kind: ewald
+  - types: [K, Cl]
+    forces:
+      - kind: huggins_mayer
+        sigma: 0.3048
+        b: 20.3549
+        B: 29.7
+        c: -2.89063e-3
+        d: -4.39616e-5
+        cutoff: ${eval:"${system.L} * 0.45"}
+      - kind: ewald
+
+sampler:
+  actions:
+    - action: "translate"
+      probability: 1.0
+  max_displacement: 0.05
+
+  force_recompute: false
+
+debug: false
+
+logger:
+  log_interval: 10
+  xyz_interval: 100

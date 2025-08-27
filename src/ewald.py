@@ -6,7 +6,7 @@ and cached data for Ewald summation.
 
 import numpy as np
 from typing import Optional
-from .units import Units
+from units import Units
 
 
 class EwaldHandler:
@@ -28,7 +28,7 @@ class EwaldHandler:
         n_c: Optional[int] = None,
         dielectric: Optional[float] = None,
         z_scale_factor: float = 1.0,
-        dipole_correction: bool = True,
+        dipole_correction: bool = False,
         units: Units = None,
     ):
         """
@@ -72,14 +72,21 @@ class EwaldHandler:
 
         In LJ units, lB* = 1/(εr * T*) where T* is reduced temperature.
 
+        In standard units, lB* = kc / εr where kc is the Coulomb constant.
+
         Args:
             temperature: System temperature in appropriate units
         """
         if self.units and getattr(self.units, "system_name", "") == "lj":
             self.lB_star = 1.0 / max(self.dielectric * temperature, 1e-12)
-        else:
+        elif self.units and getattr(self.units, "system_name", "") == "standard":
             # Fallback for non-LJ units
-            self.lB_star = 1.0
+            kc = 138.935456  # kJ nm / mol
+            self.lB_star = kc / max(self.dielectric, 1e-12)
+        # elif self.units and getattr(self.units, "system_name", "") == "SI":
+        #     # Fallback for non-LJ units
+        #     kc = 138.935456  # kJ nm / mol
+        #     self.lB_star = kc / max(self.dielectric, 1e-12)
 
     def initialize_k_vectors(self, box: np.ndarray) -> None:
         """
@@ -118,7 +125,7 @@ class EwaldHandler:
         with np.errstate(divide="ignore", invalid="ignore"):
             Ak = (
                 (2.0 * np.pi / V)
-                * np.exp(-k_sq / (4.0 * (self.alpha**2)))
+                * np.exp(-k_sq / (4.0 * self.alpha))
                 / np.where(k_sq > 0, k_sq, np.inf)
             )
 
@@ -156,11 +163,11 @@ class EwaldHandler:
 
         # S_c(k) = sum_i q_i * cos(k·r_i)
         # S_s(k) = sum_i q_i * sin(k·r_i)
-        Sc = np.sum(q * cos_kr, axis=1)
-        Ss = np.sum(q * sin_kr, axis=1)
+        # Sc = np.sum(q * cos_kr, axis=1)
+        # Ss = np.sum(q * sin_kr, axis=1)
 
-        self.Sc = Sc
-        self.Ss = Ss
+        self.Sc = q * cos_kr
+        self.Ss = q * sin_kr
 
     def update_dipole_moment(self, positions: np.ndarray, charges: np.ndarray) -> None:
         """
@@ -171,6 +178,15 @@ class EwaldHandler:
             charges: Particle charges (N,)
         """
         self.dipole_z = np.sum(charges * positions[:, 2])
+
+    def update_structure_factors_from_delta(
+        self, id: int, delta_S_c: np.ndarray, delta_S_s: np.ndarray
+    ) -> None:
+        """
+        Update structure factors S_c and S_s for current positions and charges.
+        """
+        self.Sc[:, id] += delta_S_c
+        self.Ss[:, id] += delta_S_s
 
     def compute_total_kspace_energy(self) -> float:
         """
@@ -185,8 +201,8 @@ class EwaldHandler:
             return 0.0
 
         # |S(k)|² = S_c(k)² + S_s(k)²
-        S_squared = self.Sc**2 + self.Ss**2
-        energy = 0.5 * np.sum(self.Ak * S_squared)
+        S_squared = np.sum(self.Sc, axis=1) ** 2 + np.sum(self.Ss, axis=1) ** 2
+        energy = np.sum(self.Ak * S_squared)
 
         # Scale by reduced Bjerrum length for LJ units
         if self.lB_star is not None:
@@ -198,7 +214,7 @@ class EwaldHandler:
         """
         Compute the total self-energy correction for the entire system.
 
-        U_self = -(α/√π) ∑_i q_i²
+        U_self = -√(α/π) ∑_i q_i²
 
         Args:
             charges: Particle charges (N,)
@@ -213,7 +229,7 @@ class EwaldHandler:
             return 0.0
 
         q_squared_sum = np.sum(charges**2)
-        energy = -(self.alpha / np.sqrt(np.pi)) * q_squared_sum
+        energy = -np.sqrt(self.alpha / np.pi) * q_squared_sum
 
         # Scale by reduced Bjerrum length for LJ units
         if self.lB_star is not None:
@@ -274,13 +290,6 @@ class EwaldHandler:
             raise ValueError("Either new_position or old_position must be provided")
 
         new_c, new_s, old_c, old_s = 0, 0, 0, 0
-        # Check if we have valid k-vectors
-        # if self.kvecs is None or len(self.kvecs) == 0:
-        #     return 0.0
-
-        # # Initialize with zeros of the correct shape
-        # new_c, new_s = np.zeros_like(self.Sc), np.zeros_like(self.Ss)
-        # old_c, old_s = np.zeros_like(self.Sc), np.zeros_like(self.Ss)
 
         if new_position is not None:
             new_c = np.cos(self.kvecs @ new_position)
@@ -292,24 +301,17 @@ class EwaldHandler:
         delta_S_c = charge * (new_c - old_c)
         delta_S_s = charge * (new_s - old_s)
 
-        # For reciprocal space energy, we need to account for the 0.5 factor
-        # The change in energy is:
-        # ΔU_k = 0.5 * q * (phi_new - phi_old)
-        # Where phi = (4π/V) * sum_k [A(k) * (S_c*cos(k·r) - S_s*sin(k·r))]
-
-        # For translation: phi_new - phi_old involves only the change in cos/sin terms
-        # For insertion/deletion: we need to consider the full contribution
-
-        dot_product = self.Sc * delta_S_c + self.Ss * delta_S_s
+        dot_product = (
+            np.sum(self.Sc, axis=1) * delta_S_c + np.sum(self.Ss, axis=1) * delta_S_s
+        )
         delta_S_squared = delta_S_c**2 + delta_S_s**2
 
-        # The factor of 0.5 is because U_recip(i) = 0.5 * q_i * phi(r_i)
-        delta_energy = 0.5 * np.sum(self.Ak * (2 * dot_product + delta_S_squared))
+        delta_energy = np.sum(self.Ak * (2 * dot_product + delta_S_squared))
 
         if self.lB_star is not None:
             delta_energy *= self.lB_star
 
-        return delta_energy
+        return delta_energy, delta_S_c, delta_S_s
 
     def delta_self_energy(self, charge: float) -> float:
         """
@@ -318,36 +320,12 @@ class EwaldHandler:
         if self.alpha is None:
             return 0.0
 
-        delta_self_energy = -(self.alpha / np.sqrt(np.pi)) * charge**2
+        delta_self_energy = -np.sqrt(self.alpha / np.pi) * charge**2
 
         if self.lB_star is not None:
             delta_self_energy *= self.lB_star
 
         return delta_self_energy
-
-    # def delta_dipole_correction(
-    #     self,
-    #     new_positions: np.ndarray = None,
-    #     old_positions: np.ndarray = None,
-    #     charges: np.ndarray = None,
-    #     volume: float = None,
-    # ) -> float:
-    #     # Calculate change in dipole correction
-    #     # energy = -2.0 * np.pi * (self.dipole_z**2) / volume
-    #     new_dipole_z, old_dipole_z = 0.0, 0.0
-
-    #     if new_positions is not None:
-    #         new_dipole_z = np.sum(charges * new_positions[:, 2])
-    #     if old_positions is not None:
-    #         old_dipole_z = np.sum(charges * old_positions[:, 2])
-
-    #     delta_dipole_z_squared = new_dipole_z**2 - old_dipole_z**2
-    #     delta_dipole_energy = -2.0 * np.pi * delta_dipole_z_squared / volume
-
-    #     if self.lB_star is not None:
-    #         delta_dipole_energy *= self.lB_star
-
-    #     return delta_dipole_energy
 
     def delta_dipole_correction(
         self,
@@ -370,6 +348,9 @@ class EwaldHandler:
         Returns:
             Change in dipole correction energy
         """
+        if not self.dipole_correction:
+            return 0.0
+
         # Apply z_scale_factor to volume for dipole correction
         scaled_volume = volume * self.z_scale_factor
 
@@ -398,3 +379,27 @@ class EwaldHandler:
             delta_dipole_energy *= self.lB_star
 
         return delta_dipole_energy
+
+    def compute_pressure_virial(self, volume: float) -> float:
+        """
+        Compute the pressure due to virial interactions in the Ewald sum.
+
+        Args:
+            volume: System volume
+        """
+        if self.kvecs is None or self.Ak is None or self.Sc is None or self.Ss is None:
+            return 0.0
+
+        if volume <= 0.0:
+            return 0.0
+
+        # k_sq = np.sum(self.kvecs * self.kvecs, axis=1)
+        # |S(k)|² = S_c(k)² + S_s(k)²
+        S_squared = np.sum(self.Sc, axis=1) ** 2 + np.sum(self.Ss, axis=1) ** 2
+
+        virial_pressure = (
+            np.sum(S_squared * self.Ak * (1 / 3 - self.k_sq / (6 * self.alpha)))
+            / volume
+        )
+
+        return virial_pressure

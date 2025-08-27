@@ -59,24 +59,24 @@ class EwaldReal(Force):
         with np.errstate(divide="ignore", invalid="ignore"):
             mask = (r > 1e-12) & (r <= r_cut)
             r_t = r[mask]
-            dr = r_ij[mask]
+            dr = r_ij[mask, :]
 
             # Energy
-            erfc_term = erfc(alpha * r_t)
+            erfc_term = erfc(np.sqrt(alpha) * r_t)
             e = qi * qj * erfc_term / r_t
             energies[mask] = e
 
             # Force magnitude on j from i (negative gradient wrt r_j)
-            # F = - d/dr (qi qj erfc(alpha r)/r) * r_hat
+            # F = - d/dr (qi qj erfc(sqrt(alpha) r)/r) * r_hat
             inv_r = 1.0 / r_t
             inv_r2 = inv_r * inv_r
-            exp_term = np.exp(-(alpha**2) * (r_t**2))
+            exp_term = np.exp(-alpha * r_t**2)
             bracket = (
-                erfc_term * inv_r2 + (2.0 * alpha / np.sqrt(np.pi)) * exp_term * inv_r
+                erfc_term * inv_r2 + 2.0 * np.sqrt(alpha / np.pi) * exp_term * inv_r
             )
 
             force_mag = qi * qj * bracket
-            forces_vec = -force_mag[:, np.newaxis] * dr * inv_r[:, np.newaxis]
+            forces_vec = force_mag[:, np.newaxis] * dr * inv_r[:, np.newaxis]
             forces[mask] = forces_vec
 
         return np.sum(energies), forces

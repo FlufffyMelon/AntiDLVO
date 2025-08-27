@@ -180,7 +180,8 @@ class Sampler:
         for _ in range(n_steps):
             with self.profiler.measure("step_total"):
                 # Select action
-                action = self._select_action()
+                with self.profiler.measure("select_action"):
+                    action = self._select_action()
 
                 # Perform action
                 if action == "translate":
@@ -228,8 +229,10 @@ class Sampler:
 
         # Calculate energy difference
         with self.profiler.measure("energy_diff_translate"):
-            energy_diff, delta_virial = self.topology.get_energy_difference_translation(
-                atom_id, new_position, self.system
+            energy_diff, delta_virial, delta_S_c, delta_S_s = (
+                self.topology.get_energy_difference_translation(
+                    atom_id, new_position, self.system
+                )
             )
 
         self.n_attempted["translate"] += 1
@@ -240,30 +243,36 @@ class Sampler:
 
         accepted = energy_diff <= 0.0 or self.rng.random() < np.exp(-beta * energy_diff)
         if accepted:
-            # Update position
-            self.system.positions[atom_id] = new_position
-            # Update caches: potential energy and virial
-            if self.system.potential_energy is None or self.system.virial is None:
-                self.topology.recompute_caches(self.system)
-            else:
-                # self.system.potential_energy += getattr(
-                #     self.topology, "_last_delta_energy", 0.0
-                # )
-                self.system.potential_energy += energy_diff
-                # self.system.virial += getattr(self.topology, "_last_delta_virial", 0.0)
-                self.system.virial += delta_virial
-            # Update Ewald structure factors if enabled
-            if self.system.ewald_handler:
-                self.system.ewald_handler.update_structure_factors(
-                    self.system.positions[: self.system.N],
-                    self.system.charges[: self.system.N],
-                )
-                self.system.ewald_handler.update_dipole_moment(
-                    self.system.positions[: self.system.N],
-                    self.system.charges[: self.system.N],
-                )
-            self.n_accepted["translate"] += 1
-            self.n_accepted["total"] += 1
+            with self.profiler.measure("translate_accepted"):
+                # Update position
+                self.system.positions[atom_id] = new_position
+                # Update caches: potential energy and virial
+                if self.system.potential_energy is None or self.system.virial is None:
+                    self.topology.recompute_caches(self.system)
+                else:
+                    # self.system.potential_energy += getattr(
+                    #     self.topology, "_last_delta_energy", 0.0
+                    # )
+                    self.system.potential_energy += energy_diff
+                    # self.system.virial += getattr(self.topology, "_last_delta_virial", 0.0)
+                    self.system.virial += delta_virial
+                # Update Ewald structure factors if enabled
+                if self.system.ewald_handler:
+                    with self.profiler.measure("ewald_update_structure_factors"):
+                        # self.system.ewald_handler.update_structure_factors(
+                        #     self.system.positions[: self.system.N],
+                        #     self.system.charges[: self.system.N],
+                        # )
+                        self.system.ewald_handler.update_structure_factors_from_delta(
+                            atom_id, delta_S_c, delta_S_s
+                        )
+                    with self.profiler.measure("ewald_update_dipole_moment"):
+                        self.system.ewald_handler.update_dipole_moment(
+                            self.system.positions[: self.system.N],
+                            self.system.charges[: self.system.N],
+                        )
+                self.n_accepted["translate"] += 1
+                self.n_accepted["total"] += 1
         # else:
         # Rejected; clear last deltas
         # self.topology._last_delta_energy = 0.0
@@ -372,6 +381,18 @@ class Sampler:
             else:
                 self.system.potential_energy += insertion_delta_energy
                 self.system.virial += insertion_delta_virial
+
+            # Update Ewald structure factors if enabled
+            if self.system.ewald_handler:
+                self.system.ewald_handler.update_structure_factors(
+                    self.system.positions[: self.system.N],
+                    self.system.charges[: self.system.N],
+                )
+                self.system.ewald_handler.update_dipole_moment(
+                    self.system.positions[: self.system.N],
+                    self.system.charges[: self.system.N],
+                )
+
             # Update ideal gas chemical potential
             self.system.mu_id = self._compute_mu_id()
             self.n_accepted["insert"] += 1

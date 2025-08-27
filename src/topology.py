@@ -289,9 +289,8 @@ class Topology:
             raise IndexError(f"Atom index {atom_id} out of range")
         positions, types, names, charges, masses = system.get_active_atoms()
         old_position = positions[atom_id]
-        # if self._has_ewald():
+
         # Energy with old position
-        # energy_before, _ = self.compute_energy_virial(system)
         energy_before, _, virial_old = self._single_energy_forces_virial(
             old_position,
             int(types[atom_id]),
@@ -299,27 +298,28 @@ class Topology:
             system,
             exclude_index=atom_id,
         )
-        # Temporarily set new position
-        # positions[atom_id] = new_position
-        # system.ewald_update_structure_factors()
-        # energy_after, _ = self.compute_energy_virial(system)
-        energy_after, _, virial_new = self._single_energy_forces_virial(
-            new_position,
-            int(types[atom_id]),
-            float(charges[atom_id]),
-            system,
-            exclude_index=atom_id,
-        )
-        # Restore old position
-        # positions[atom_id] = old_position
+
+        # Energy with new position
+        with self.profiler.measure("translation_pair"):
+            energy_after, _, virial_new = self._single_energy_forces_virial(
+                new_position,
+                int(types[atom_id]),
+                float(charges[atom_id]),
+                system,
+                exclude_index=atom_id,
+            )
+
         delta_energy = energy_after - energy_before
         delta_virial = virial_new - virial_old
 
         if system.ewald_handler:
             # K-space contribution
-            delta_kspace_energy = system.ewald_handler.delta_kspace_energy(
-                new_position, old_position, charges[atom_id]
-            )
+            with self.profiler.measure("translation_kspace"):
+                delta_kspace_energy, delta_S_c, delta_S_s = (
+                    system.ewald_handler.delta_kspace_energy(
+                        new_position, old_position, charges[atom_id]
+                    )
+                )
 
             # Dipole correction for slab geometry
             delta_dipole_energy = system.ewald_handler.delta_dipole_correction(
@@ -327,45 +327,16 @@ class Topology:
             )
 
             delta_energy += delta_kspace_energy + delta_dipole_energy
-
-        # self._last_delta_energy = delta_energy
-        # self._last_delta_virial = delta_virial
-
-        return delta_energy, delta_virial
-        # energy_old, _, virial_old = self._single_energy_forces_virial(
-        #     old_position,
-        #     int(types[atom_id]),
-        #     float(charges[atom_id]),
-        #     system,
-        #     exclude_index=atom_id,
-        # )
-        # energy_new, _, virial_new = self._single_energy_forces_virial(
-        #     new_position,
-        #     int(types[atom_id]),
-        #     float(charges[atom_id]),
-        #     system,
-        #     exclude_index=atom_id,
-        # )
-        # self._last_delta_energy = energy_new - energy_old
-        # self._last_delta_virial = virial_new - virial_old
-
-        # return self._last_delta_energy
+        # print(f"delta_energy: {delta_energy}")
+        # print(f"delta_kspace: {delta_kspace_energy}")
+        # print(f"delta_dipole: {delta_dipole_energy}")
+        # print(f"--------------------------------")
+        return delta_energy, delta_virial, delta_S_c, delta_S_s
 
     def get_energy_insertion(
         self, position: np.ndarray, atom_type: int, charge: float, system: System
     ) -> float:
-        # if self._has_ewald():
-        # energy_before, _ = self.compute_energy_virial(system)
-        # Temporarily add atom
-        # idx = system.add_atom(
-        #     position,
-        #     int(atom_type),
-        #     self.type_id_to_name.get(int(atom_type), f"T{atom_type}"),
-        #     float(charge),
-        #     float(self.get_type_property(int(atom_type), "mass", 1.0) or 1.0),
-        # )
-        # system.ewald_update_structure_factors()
-        # energy_after, _ = self.compute_energy_virial(system)
+        # Energy of insertion
         delta_energy, _, delta_virial = self._single_energy_forces_virial(
             position,
             int(atom_type),
@@ -373,11 +344,7 @@ class Topology:
             system,
             exclude_index=None,
         )
-        # Remove temporary atom
-        # system.remove_atom(idx)
-        # system.ewald_update_structure_factors()
-        # self._last_delta_energy = energy
-        # self._last_delta_virial = virial
+
         if system.ewald_handler:
             # K-space contribution
             delta_kspace_energy = system.ewald_handler.delta_kspace_energy(
@@ -398,36 +365,13 @@ class Topology:
 
         return delta_energy, delta_virial
 
-        # energy, _, virial = self._single_energy_forces_virial(
-        #     position,
-        #     int(atom_type),
-        #     float(charge),
-        #     system,
-        #     exclude_index=None,
-        # )
-        # self._last_delta_energy = energy
-        # self._last_delta_virial = virial
-
-        # return self._last_delta_energy
-
     def get_energy_deletion(self, atom_id: int, system: System) -> float:
         """Compute single-atom energy/virial for deletion and store negative deltas for caches."""
         if atom_id >= system.N or atom_id < 0:
             raise IndexError(f"Atom index {atom_id} out of range")
         positions, types, names, charges, masses = system.get_active_atoms()
-        # if self._has_ewald():
-        # energy_before, _ = self.compute_energy_virial(system)
-        # Temporarily remove atom
-        # saved = (
-        #     positions[atom_id].copy(),
-        #     int(types[atom_id]),
-        #     names[atom_id],
-        #     float(charges[atom_id]),
-        #     float(masses[atom_id]),
-        # )
-        # system.remove_atom(atom_id)
-        # system.ewald_update_structure_factors()
-        # energy_after, _ = self.compute_energy_virial(system)
+
+        # Energy of deletion
         delta_energy, _, delta_virial = self._single_energy_forces_virial(
             positions[atom_id],
             types[atom_id],
@@ -437,11 +381,6 @@ class Topology:
         )
         delta_energy = -delta_energy
         delta_virial = -delta_virial
-        # Add back atom at original tail position
-        # system.add_atom(*saved)
-        # system.ewald_update_structure_factors()
-        # self._last_delta_energy = -energy
-        # self._last_delta_virial = -virial
 
         if system.ewald_handler:
             # K-space contribution
@@ -465,18 +404,6 @@ class Topology:
 
         return delta_energy, delta_virial
 
-        # energy, _, virial = self._single_energy_forces_virial(
-        #     positions[atom_id],
-        #     int(types[atom_id]),
-        #     float(charges[atom_id]),
-        #     system,
-        #     exclude_index=atom_id,
-        # )
-        # self._last_delta_energy = -energy
-        # self._last_delta_virial = -virial
-
-        # return energy
-
     def compute_energy_with_tail(self, system: System) -> Dict[str, float]:
         if system.potential_energy is None:
             with self.profiler.measure("recompute_caches"):
@@ -489,8 +416,8 @@ class Topology:
             inv_rc9 = inv_rc3**3
             energy_tail = (
                 (8.0 / 3.0) * np.pi * density * ((1.0 / 3.0) * inv_rc9 - inv_rc3)
-                # * system.N
             )
+
         return {
             "energy": float(system.potential_energy or 0.0),
             "energy_tail": energy_tail,
@@ -508,23 +435,48 @@ class Topology:
             if self.units.system_name == "lj"
             else (8.314462618e-3 * system.temp)
         )
+
+        # Ideal pressure
         pressure_ideal = density * kbT
-        pressure_config = (
+
+        # Pair virial pressure
+        pressure_pair_virial = (
             (float(system.virial or 0.0) / (3.0 * volume)) if system.N > 1 else 0.0
         )
-        pressure = pressure_ideal + pressure_config
-        rc = self._get_lj_cutoff()
-        pressure_tail = 0.0
-        if rc is not None and density > 0:
-            inv_rc3 = (1.0 / rc) ** 3
+
+        # Ewald virial pressure
+        pressure_ewald_virial = 0.0
+        if system.ewald_handler:
+            pressure_ewald_virial = system.ewald_handler.compute_pressure_virial(
+                system.get_volume()
+            )
+
+        # Total pressure
+        pressure = pressure_ideal + pressure_pair_virial + pressure_ewald_virial
+
+        # Tail correction for LJ potential
+        rc_lj = None
+        for key, flist in self.interactions.items():
+            for f in flist:
+                if isinstance(f, LennardJones):
+                    rc_lj = float(f.cutoff)
+                    break
+            if rc_lj is not None:
+                break
+
+        pressure_lj_tail = 0.0
+        if rc_lj is not None and density > 0:
+            inv_rc3 = (1.0 / rc_lj) ** 3
             inv_rc9 = inv_rc3**3
-            pressure_tail = (
+            pressure_lj_tail = (
                 (16.0 / 3.0) * np.pi * (density**2) * ((2.0 / 3.0) * inv_rc9 - inv_rc3)
             )
+
         return {
-            "pressure": pressure,
-            "pressure_tail": pressure_tail,
-            "pressure_total": pressure + pressure_tail,
+            "pressure_ideal": pressure_ideal,
+            "pressure_virial": pressure_pair_virial + pressure_ewald_virial,
+            "pressure_tail": pressure_lj_tail,
+            "pressure_total": pressure + pressure_lj_tail,
         }
 
     def compute_solvation_force(self, system: System) -> Optional[float]:

@@ -10,7 +10,7 @@ debug: false
 simulation:
   ensemble: "NVT"
   temperature: 2.0         # LJ temperature
-  n_steps: 1000
+  n_steps: 100000
 
 system:
   n_atoms: 512

@@ -76,14 +76,19 @@ class Profiler:
     def get_stats(self) -> Dict[str, Dict[str, float]]:
         return {k: dict(v) for k, v in self._stats.items()}
 
-    def _append_tree_lines(self, node: _ProfileNode, total_runtime_s: float, lines: List[str], depth: int) -> None:
+    def _append_tree_lines(
+        self, node: _ProfileNode, total_runtime_s: float, lines: List[str], depth: int
+    ) -> None:
         # Sort children by time descending
         children = sorted(node.children.values(), key=lambda n: n.time, reverse=True)
         for child in children:
             pct = (child.time / total_runtime_s * 100.0) if total_runtime_s > 0 else 0.0
             indent = " " * 4 * depth
-            # lines.append(f"{indent}{child.label}: {child.time:.6f} s, {child.count} calls, {pct:.1f}%")
-            lines.append(f"{indent}{child.label}: {child.time:.6f} s, {pct:.1f}%")
+            avg_time = (child.time / child.count) if child.count > 0 else 0.0
+            # Report total time as avg_time * calls (equals accumulated child.time), along with calls and avg per call
+            lines.append(
+                f"{indent}{child.label}: total={child.time:.6f} s, calls={child.count}, avg={avg_time:.6f} s, {pct:.1f}%"
+            )
             self._append_tree_lines(child, total_runtime_s, lines, depth + 1)
 
     def summary_text(self, total_moves: int, total_runtime_s: float) -> str:
@@ -93,19 +98,25 @@ class Profiler:
         lines.append("Performance summary:")
         lines.append(f"  Total runtime: {total_runtime_s:.3f} s")
         if total_moves > 0:
-            lines.append(f"  Avg time per MC step: {total_runtime_s / total_moves:.6f} s")
+            lines.append(
+                f"  Avg time per MC step: {total_runtime_s / total_moves:.6f} s"
+            )
         lines.append("")
-        lines.append("Hierarchical breakdown (time, calls, % of total):")
+        lines.append(
+            "Hierarchical breakdown (total time, calls, avg per call, % of total):"
+        )
         # Print hierarchy starting from root's children
         self._append_tree_lines(self._root, total_runtime_s, lines, depth=0)
 
         # Optionally include flat-only counters (labels that never appeared in hierarchy)
         # These might come from increment() calls and have zero time.
         hierarchical_labels = set()
+
         def _collect_labels(n: _ProfileNode):
             for c in n.children.values():
                 hierarchical_labels.add(c.label)
                 _collect_labels(c)
+
         _collect_labels(self._root)
         extras = [
             (label, data)
