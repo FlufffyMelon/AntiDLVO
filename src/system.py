@@ -6,6 +6,7 @@ import numpy as np
 from typing import Optional, List, Tuple, Union
 from .units import Units
 from .ewald import EwaldHandler
+from .molecule import Molecule
 
 
 class System:
@@ -41,7 +42,8 @@ class System:
             ewald_handler: Ewald handler object
             units: Units system to use
         """
-        self.N = n_atoms
+        self.N_atoms = n_atoms
+        self.N_molecules = 0
         self.capacity = max(initial_capacity, n_atoms)
         self.ensemble = ensemble
         self.temp = temp
@@ -104,6 +106,7 @@ class System:
         self.positions = np.zeros((self.capacity, 3), dtype=np.float64)
         self.types = np.zeros(self.capacity, dtype=np.int32)
         self.names = np.empty(self.capacity, dtype="U10")
+        self.molecule_ids = np.zeros(self.capacity, dtype=np.int32)
 
     def _resize_arrays(self, new_capacity: int) -> None:
         """Resize all arrays to new capacity."""
@@ -116,6 +119,7 @@ class System:
         new_positions = np.zeros((new_capacity, 3), dtype=np.float64)
         new_types = np.zeros(new_capacity, dtype=np.int32)
         new_names = np.empty(new_capacity, dtype="U10")
+        new_molecule_ids = np.zeros(new_capacity, dtype=np.int32)
 
         # Copy existing data
         copy_size = min(old_capacity, new_capacity)
@@ -124,6 +128,7 @@ class System:
         new_positions[:copy_size] = self.positions[:copy_size]
         new_types[:copy_size] = self.types[:copy_size]
         new_names[:copy_size] = self.names[:copy_size]
+        new_molecule_ids[:copy_size] = self.molecule_ids[:copy_size]
 
         # Update arrays
         self.charges = new_charges
@@ -131,17 +136,40 @@ class System:
         self.positions = new_positions
         self.types = new_types
         self.names = new_names
+        self.molecule_ids = new_molecule_ids
 
-    def add_atom(
+    def add_molecule(self, molecule: Molecule) -> int:
+        """
+        Add a molecule to the system.
+
+        Args:
+            molecule: Molecule to add
+
+        Returns:
+            Index of the molecule in the molecules list
+        """
+        # Assign a unique ID to the molecule
+        molecule_id = self.N_molecules
+        self.N_molecules += 1
+
+        # Add all particles from the molecule
+        particles = molecule.get_particles()
+        for position, type_id, name, charge, mass in particles:
+            self._add_atom(position, type_id, name, charge, mass, molecule_id)
+
+        return molecule_id
+
+    def _add_atom(
         self,
         position: Union[List[float], np.ndarray],
         atom_type: int,
         name: str,
         charge: float = 0.0,
         mass: float = 1.0,
+        molecule_id: int = -1,
     ) -> int:
         """
-        Add an atom to the system.
+        Internal method to add an atom to the system.
 
         Args:
             position: Atom position [x, y, z]
@@ -149,23 +177,25 @@ class System:
             name: Atom name
             charge: Atom charge
             mass: Atom mass
+            molecule_id: ID of the molecule this atom belongs to
 
         Returns:
             Index of the added atom
         """
         # Check if we need to resize
-        if self.N >= self.capacity:
+        if self.N_atoms >= self.capacity:
             self._resize_arrays(self.capacity * 2)
 
         # Add atom data
-        atom_id = self.N
+        atom_id = self.N_atoms
         self.positions[atom_id] = np.array(position, dtype=np.float64)
         self.types[atom_id] = atom_type
         self.names[atom_id] = name
         self.charges[atom_id] = charge
         self.masses[atom_id] = mass
+        self.molecule_ids[atom_id] = molecule_id
 
-        self.N += 1
+        self.N_atoms += 1
 
         return atom_id
 
@@ -176,33 +206,47 @@ class System:
         Args:
             atom_id: Index of atom to remove
         """
-        if atom_id >= self.N or atom_id < 0:
+        if atom_id >= self.N_atoms or atom_id < 0:
             raise IndexError(f"Atom index {atom_id} out of range")
 
         # Shift all atoms after the removed one
-        if atom_id < self.N - 1:
-            self.positions[atom_id : self.N - 1] = self.positions[atom_id + 1 : self.N]
-            self.types[atom_id : self.N - 1] = self.types[atom_id + 1 : self.N]
-            self.names[atom_id : self.N - 1] = self.names[atom_id + 1 : self.N]
-            self.charges[atom_id : self.N - 1] = self.charges[atom_id + 1 : self.N]
-            self.masses[atom_id : self.N - 1] = self.masses[atom_id + 1 : self.N]
+        if atom_id < self.N_atoms - 1:
+            self.positions[atom_id : self.N_atoms - 1] = self.positions[
+                atom_id + 1 : self.N_atoms
+            ]
+            self.types[atom_id : self.N_atoms - 1] = self.types[
+                atom_id + 1 : self.N_atoms
+            ]
+            self.names[atom_id : self.N_atoms - 1] = self.names[
+                atom_id + 1 : self.N_atoms
+            ]
+            self.charges[atom_id : self.N_atoms - 1] = self.charges[
+                atom_id + 1 : self.N_atoms
+            ]
+            self.masses[atom_id : self.N_atoms - 1] = self.masses[
+                atom_id + 1 : self.N_atoms
+            ]
+            self.molecule_ids[atom_id : self.N_atoms - 1] = self.molecule_ids[
+                atom_id + 1 : self.N_atoms
+            ]
 
         # Zero out the last position
-        self.positions[self.N - 1] = 0.0
-        self.types[self.N - 1] = 0
-        self.names[self.N - 1] = ""
-        self.charges[self.N - 1] = 0.0
-        self.masses[self.N - 1] = 0.0
+        self.positions[self.N_atoms - 1] = 0.0
+        self.types[self.N_atoms - 1] = 0
+        self.names[self.N_atoms - 1] = ""
+        self.charges[self.N_atoms - 1] = 0.0
+        self.masses[self.N_atoms - 1] = 0.0
+        self.molecule_ids[self.N_atoms - 1] = 0
 
-        self.N -= 1
+        self.N_atoms -= 1
 
         # Update Ewald structure factors if enabled
         if self.ewald_handler:
             self.ewald_handler.update_structure_factors(
-                self.positions[: self.N], self.charges[: self.N]
+                self.positions[: self.N_atoms], self.charges[: self.N_atoms]
             )
             self.ewald_handler.update_dipole_moment(
-                self.positions[: self.N], self.charges[: self.N]
+                self.positions[: self.N_atoms], self.charges[: self.N_atoms]
             )
 
     def get_active_atoms(self) -> Tuple[np.ndarray, ...]:
@@ -213,11 +257,12 @@ class System:
             Tuple of (positions, types, names, charges, masses)
         """
         return (
-            self.positions[: self.N],
-            self.types[: self.N],
-            self.names[: self.N],
-            self.charges[: self.N],
-            self.masses[: self.N],
+            self.positions[: self.N_atoms],
+            self.molecule_ids[: self.N_atoms],
+            self.types[: self.N_atoms],
+            self.names[: self.N_atoms],
+            self.charges[: self.N_atoms],
+            self.masses[: self.N_atoms],
         )
 
     def apply_pbc(self, position: np.ndarray) -> np.ndarray:
@@ -266,7 +311,9 @@ class System:
         """
         dr = positions - pos1[np.newaxis, :]
         dr = np.where(
-            self.pbc[np.newaxis, :], dr - self.box * np.round(dr * self.inv_box), dr
+            self.pbc[np.newaxis, :],
+            dr - self.box[np.newaxis, :] * np.round(dr * self.inv_box[np.newaxis, :]),
+            dr,
         )
         return np.linalg.norm(dr, axis=1)
 
@@ -285,10 +332,10 @@ class System:
         if self.ewald_handler:
             self.ewald_handler.initialize_k_vectors(self.box)
             self.ewald_handler.update_structure_factors(
-                self.positions[: self.N], self.charges[: self.N]
+                self.positions[: self.N_atoms], self.charges[: self.N_atoms]
             )
             self.ewald_handler.update_dipole_moment(
-                self.positions[: self.N], self.charges[: self.N]
+                self.positions[: self.N_atoms], self.charges[: self.N_atoms]
             )
 
     def get_volume(self) -> float:
@@ -299,11 +346,99 @@ class System:
 
     def get_density(self) -> float:
         """Get the number density (atoms per unit volume)."""
-        return self.N / self.get_volume() if self.N > 0 else 0.0
+        return self.N_atoms / self.get_volume() if self.N_atoms > 0 else 0.0
+
+    def get_molecule_atoms(self, molecule_id: int) -> List[int]:
+        """
+        Get the atom indices that belong to a specific molecule.
+
+        Args:
+            molecule_id: ID of the molecule
+
+        Returns:
+            List of atom indices belonging to the molecule
+        """
+        return np.argwhere(self.molecule_ids[: self.N_atoms] == molecule_id).flatten()
+        # return np.arange(self.N_atoms)[self.molecule_ids[: self.N_atoms] == molecule_id]
+
+    def get_molecule_by_atom(self, atom_id: int) -> Optional[Molecule]:
+        """
+        Get the molecule that an atom belongs to.
+
+        Args:
+            atom_id: Index of the atom
+
+        Returns:
+            Molecule object or None if the atom doesn't belong to a molecule
+        """
+        if atom_id >= self.N_atoms or atom_id < 0:
+            raise IndexError(f"Atom index {atom_id} out of range")
+
+        molecule_id = self.molecule_ids[atom_id]
+        if molecule_id < 0 or molecule_id >= len(self.molecules):
+            return None
+
+        return self.molecules[molecule_id]
+
+    def update_molecule_positions(self, molecule_id: int) -> None:
+        """
+        Update atom positions based on the molecule's current state.
+
+        This is useful after molecule translation or rotation.
+
+        Args:
+            molecule_id: ID of the molecule to update
+        """
+        if molecule_id < 0 or molecule_id >= len(self.molecules):
+            raise ValueError(f"Invalid molecule ID: {molecule_id}")
+
+        molecule = self.molecules[molecule_id]
+        particles = molecule.get_particles()
+
+        # Get all atoms belonging to this molecule
+        atom_indices = self.get_molecule_atoms(molecule_id)
+
+        # Ensure we have the right number of particles
+        if len(atom_indices) != len(particles):
+            raise ValueError(
+                f"Mismatch between molecule particles ({len(particles)}) and "
+                f"atoms in system ({len(atom_indices)})"
+            )
+
+        # Update positions in the system
+        for i, (position, _, _, _, _) in zip(atom_indices, particles):
+            self.positions[i] = position
+
+    def unwrap_molecule(self, positions: np.ndarray) -> np.ndarray:
+        """
+        Unwrap a molecule that might be split across periodic boundaries.
+
+        Args:
+            positions: Array of positions (N, 3) of atoms in the molecule
+
+        Returns:
+            Unwrapped positions (N, 3) where the molecule is continuous
+        """
+        if len(positions) <= 1:
+            return positions.copy()
+
+        # Make a copy to avoid modifying the original
+        unwrapped = positions.copy()
+
+        # Use first atom as reference, adjust others to be close to it
+        for i in range(1, len(unwrapped)):
+            for dim in range(3):
+                # Apply minimum image convention to ensure atoms are close to reference
+                while unwrapped[i, dim] - unwrapped[0, dim] > self.box[dim] / 2:
+                    unwrapped[i, dim] -= self.box[dim]
+                while unwrapped[i, dim] - unwrapped[0, dim] < -self.box[dim] / 2:
+                    unwrapped[i, dim] += self.box[dim]
+
+        return unwrapped
 
     def __str__(self) -> str:
         """String representation of the system."""
         return (
-            f"System: {self.N} atoms, {self.ensemble} ensemble, "
+            f"System: {self.N_atoms} atoms, {self.N_molecules} molecules, {self.ensemble} ensemble, "
             f"T={self.temp}, box={self.box}, capacity={self.capacity}"
         )

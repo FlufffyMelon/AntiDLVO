@@ -83,10 +83,6 @@ class EwaldHandler:
             # Fallback for non-LJ units
             kc = 138.935456  # kJ nm / mol
             self.lB_star = kc / max(self.dielectric, 1e-12)
-        # elif self.units and getattr(self.units, "system_name", "") == "SI":
-        #     # Fallback for non-LJ units
-        #     kc = 138.935456  # kJ nm / mol
-        #     self.lB_star = kc / max(self.dielectric, 1e-12)
 
     def initialize_k_vectors(self, box: np.ndarray) -> None:
         """
@@ -180,13 +176,13 @@ class EwaldHandler:
         self.dipole_z = np.sum(charges * positions[:, 2])
 
     def update_structure_factors_from_delta(
-        self, id: int, delta_S_c: np.ndarray, delta_S_s: np.ndarray
+        self, indices: np.ndarray, delta_S_c: np.ndarray, delta_S_s: np.ndarray
     ) -> None:
         """
         Update structure factors S_c and S_s for current positions and charges.
         """
-        self.Sc[:, id] += delta_S_c
-        self.Ss[:, id] += delta_S_s
+        self.Sc[:, indices] += delta_S_c
+        self.Ss[:, indices] += delta_S_s
 
     def compute_total_kspace_energy(self) -> float:
         """
@@ -266,12 +262,12 @@ class EwaldHandler:
 
     def delta_kspace_energy(
         self,
-        new_position: np.ndarray = None,
-        old_position: np.ndarray = None,
-        charge: float = None,
-    ) -> float:
+        new_positions: np.ndarray = None,
+        old_positions: np.ndarray = None,
+        charges: np.ndarray = None,
+    ):
         """
-        Compute the change in k-space energy due to translation, addition, or deletion of a particle.
+        Compute the change in k-space energy due to translation, addition, or deletion of a M particles.
 
         ΔS_c(k) = q_i [cos(k·r_new) - cos(k·r_old)]
         ΔS_s(k) = q_i [sin(k·r_new) - sin(k·r_old)]
@@ -279,32 +275,35 @@ class EwaldHandler:
         ΔU_k = (2π / V) Σ_{k≠0} A(k) [ 2( S_c ΔS_c + S_s ΔS_s ) + (ΔS_c^2 + ΔS_s^2) ].
 
         Args:
-            new_position: New particle position (3,)
-            old_position: Old particle position (3,)
-            charge: Particle charge
+            new_position: New particle position (M, 3)
+            old_position: Old particle position (M, 3)
+            charge: Particle charge (M,)
         """
-        if charge is None:
+        if charges is None:
             raise ValueError("Charge must be provided")
 
-        if new_position is None and old_position is None:
+        if new_positions is None and old_positions is None:
             raise ValueError("Either new_position or old_position must be provided")
 
         new_c, new_s, old_c, old_s = 0, 0, 0, 0
 
-        if new_position is not None:
-            new_c = np.cos(self.kvecs @ new_position)
-            new_s = np.sin(self.kvecs @ new_position)
-        if old_position is not None:
-            old_c = np.cos(self.kvecs @ old_position)
-            old_s = np.sin(self.kvecs @ old_position)
+        if new_positions is not None:
+            new_c = np.cos(self.kvecs @ new_positions.T)
+            new_s = np.sin(self.kvecs @ new_positions.T)
+        if old_positions is not None:
+            old_c = np.cos(self.kvecs @ old_positions.T)
+            old_s = np.sin(self.kvecs @ old_positions.T)
 
-        delta_S_c = charge * (new_c - old_c)
-        delta_S_s = charge * (new_s - old_s)
+        delta_S_c = charges * (new_c - old_c)
+        delta_S_s = charges * (new_s - old_s)
 
-        dot_product = (
-            np.sum(self.Sc, axis=1) * delta_S_c + np.sum(self.Ss, axis=1) * delta_S_s
+        dot_product = np.sum(self.Sc, axis=1) * np.sum(delta_S_c, axis=1) + np.sum(
+            self.Ss, axis=1
+        ) * np.sum(delta_S_s, axis=1)
+
+        delta_S_squared = (
+            np.sum(delta_S_c, axis=1) ** 2 + np.sum(delta_S_s, axis=1) ** 2
         )
-        delta_S_squared = delta_S_c**2 + delta_S_s**2
 
         delta_energy = np.sum(self.Ak * (2 * dot_product + delta_S_squared))
 
@@ -329,9 +328,9 @@ class EwaldHandler:
 
     def delta_dipole_correction(
         self,
-        new_position: np.ndarray = None,
-        old_position: np.ndarray = None,
-        charge: float = None,
+        new_positions: np.ndarray = None,
+        old_positions: np.ndarray = None,
+        charges: np.ndarray = None,
         volume: float = None,
     ) -> float:
         """
@@ -340,9 +339,9 @@ class EwaldHandler:
         ΔU_c = -2π/V * ΔM_z^2
 
         Args:
-            new_position: New particle position (3,)
-            old_position: Old particle position (3,)
-            charge: Particle charge
+            new_position: New particle position (M, 3)
+            old_position: Old particle position (M, 3)
+            charge: Particle charge (M,)
             volume: System volume
 
         Returns:
@@ -354,24 +353,21 @@ class EwaldHandler:
         # Apply z_scale_factor to volume for dipole correction
         scaled_volume = volume * self.z_scale_factor
 
-        if new_position is not None and old_position is not None:
+        if new_positions is not None and old_positions is not None:
             delta_dipole_z_squared = (
-                (2 * self.dipole_z + charge * (new_position[2] - old_position[2]))
-                * charge
-                * (new_position[2] - old_position[2])
-            )
-        elif new_position is not None:
+                2 * self.dipole_z
+                + np.sum(charges * (new_positions[:, 2] - old_positions[:, 2]))
+            ) * np.sum(charges * (new_positions[:, 2] - old_positions[:, 2]))
+        elif new_positions is not None:
             delta_dipole_z_squared = (
-                (2 * self.dipole_z + charge * new_position[2])
-                * charge
-                * new_position[2]
-            )
-        elif old_position is not None:
-            delta_dipole_z_squared = (
-                -(2 * self.dipole_z - charge * old_position[2])
-                * charge
-                * old_position[2]
-            )
+                2 * self.dipole_z + np.sum(charges * new_positions[:, 2])
+            ) * np.sum(charges * new_positions[:, 2])
+        elif old_positions is not None:
+            delta_dipole_z_squared = -(
+                2 * self.dipole_z - np.sum(charges * old_positions[:, 2])
+            ) * np.sum(charges * old_positions[:, 2])
+        else:
+            raise ValueError("Either new_positions or old_positions must be provided")
 
         delta_dipole_energy = -2.0 * np.pi * delta_dipole_z_squared / scaled_volume
 

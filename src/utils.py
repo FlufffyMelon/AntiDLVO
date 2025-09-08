@@ -5,7 +5,7 @@ Consolidates helpers used by mc_main.
 
 import numpy as np
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Tuple, Optional, Any
 from omegaconf import OmegaConf
 
 try:
@@ -23,6 +23,7 @@ from forces import *
 from .units import Units
 from .logger import Logger
 from .profiler import Profiler
+from .molecule import Molecule, Particle, Dipole
 
 
 def load_config(config_file: str, overrides: Optional[List[str]] = None):
@@ -53,15 +54,6 @@ def load_config(config_file: str, overrides: Optional[List[str]] = None):
         cfg = OmegaConf.merge(cfg, OmegaConf.from_dotlist(dotlist))
 
     return cfg
-
-
-def load_lj_parameters(lj_file: str) -> dict:
-    """Load Lennard-Jones parameters from YAML file."""
-    if not Path(lj_file).exists():
-        raise FileNotFoundError(f"LJ parameters file {lj_file} not found")
-
-    lj_data = OmegaConf.load(lj_file)
-    return lj_data.get("lj_parameters", {})
 
 
 def create_units(cfg) -> Units:
@@ -138,58 +130,139 @@ def create_system(cfg, units: Units) -> System:
     return system
 
 
+def parse_type_pairs(pair_types: Any) -> List[Tuple[str, str]]:
+    """
+    Parse a pair types specification which can contain nested lists with parentheses.
+    For example: [Na, (Ip, Im)] will be parsed to pairs [(Na, Ip), (Na, Im)]
+    Also handles string representations like '(Na, Cl)' by parsing the comma-separated values.
+
+    Args:
+        pair_types: List or tuple of types, can include nested lists with parentheses or strings
+
+    Returns:
+        List of all possible type pairs as tuples
+    """
+    # Ensure pair_types is a list-like structure
+    if not isinstance(pair_types, (list, tuple, ListConfig)):
+        raise ValueError("pair_types must be a list-like structure")
+
+    # Ensure we have exactly 2 elements for a pair
+    if len(pair_types) != 2:
+        raise ValueError("Each pair must have exactly two elements")
+
+    # Helper function to parse string groups like "(Na, Cl)" into a list of types
+    def parse_group(item):
+        if isinstance(item, str):
+            # Check if it's a group expression like "(Na, Cl)"
+            item = item.strip()
+            if item.startswith("(") and item.endswith(")"):
+                # Extract content within parentheses and split by comma
+                content = item[1:-1]
+                return [t.strip() for t in content.split(",")]
+            return [item]
+        elif isinstance(item, (list, tuple, ListConfig)):
+            return list(item)
+        else:
+            return [str(item)]
+
+    # Parse the first and second elements
+    first_types = parse_group(pair_types[0])
+    second_types = parse_group(pair_types[1])
+
+    # Generate all possible pairs
+    result = []
+    for first in first_types:
+        for second in second_types:
+            result.append((str(first), str(second)))
+
+    return result
+
+
 def setup_initial_configuration(
-    system: System, atom_types_spec: dict, topology: Topology, cfg=None
+    system: System, type_specs: list, topology: Topology, cfg=None
 ):
-    """Setup initial atom configuration.
+    """
+    Setup initial atom configuration.
 
     Modes (cfg.system.init.mode):
       - "random": random positions with minimum separation (cfg.system.init.min_distance)
       - "uniform": positions on a uniform 3D grid covering the box
-      - "SCC": simple cubic lattice with alternating K and Cl atoms
+      - "SCC": simple cubic lattice with alternating types
 
-    atom_types_spec format:
-      {
-        type_name: { count: int | null, fraction: float | null, name: str, mass, charge }
-      }
-    If counts are not provided, use fractions to distribute system._target_n_atoms.
+    type_specs format:
+    [
+        {
+            "Particle": {
+                "type": "Na",
+                "mass": float,
+                "charge": float,
+                "count": int
+            }
+        },
+        {
+            "Dipole": {
+                "type_plus": "Ip",
+                "type_minus": "Im",
+                "type_ghost": "G",
+                "length": float,
+                "ghost_count": int,
+                "mass": float,
+                "charge": float,
+                "count": int
+            }
+        }
+    ]
     """
-    target_n_atoms = getattr(system, "_target_n_atoms", 0)
-    if target_n_atoms <= 0:
+    # Create a mapping from type names to type IDs
+    type_name_to_id = topology.type_name_to_id
+
+    # Count total molecules and process the specs
+    total_molecules = 0
+    processed_specs = []
+
+    for i, spec_entry in enumerate(type_specs):
+        # Create local copy to avoid modifying the original
+        local_spec_entry = spec_entry
+
+        # Check if it's a dict or DictConfig
+        if isinstance(local_spec_entry, dict):
+            pass  # Good, it's a dict
+        elif isinstance(local_spec_entry, DictConfig):
+            local_spec_entry = OmegaConf.to_container(local_spec_entry, resolve=True)
+        else:
+            continue
+
+        # Handle the nested dictionary structure
+        if "Particle" in local_spec_entry and local_spec_entry["Particle"]:
+            molecule_type = "Particle"
+            spec = local_spec_entry["Particle"]
+            if isinstance(spec, DictConfig):
+                spec = OmegaConf.to_container(spec, resolve=True)
+        elif "Dipole" in local_spec_entry and local_spec_entry["Dipole"]:
+            molecule_type = "Dipole"
+            spec = local_spec_entry["Dipole"]
+            if isinstance(spec, DictConfig):
+                spec = OmegaConf.to_container(spec, resolve=True)
+        else:
+            raise ValueError(f"Unknown molecule type: {local_spec_entry.keys()[0]}")
+
+        # Get count and add to total
+        count = int(spec.get("count", 0))
+        if count <= 0:
+            continue
+
+        total_molecules += count
+        processed_specs.append((molecule_type, spec, count))
+
+    if total_molecules <= 0:
         return
 
-    # Determine counts per type
-    type_names = list(atom_types_spec.keys())
-    counts = {}
-    if any("count" in atom_types_spec[t] for t in type_names):
-        for t in type_names:
-            counts[t] = int(atom_types_spec[t].get("count", 0))
-    else:
-        fracs = np.array(
-            [float(atom_types_spec[t].get("fraction", 0.0)) for t in type_names]
-        )
-        if fracs.sum() <= 0:
-            counts[type_names[0]] = target_n_atoms
-            for t in type_names[1:]:
-                counts[t] = 0
-        else:
-            fracs = fracs / fracs.sum()
-            alloc = np.floor(fracs * target_n_atoms).astype(int)
-            remainder = target_n_atoms - int(alloc.sum())
-            fractional = (fracs * target_n_atoms) - alloc
-            order = np.argsort(-fractional)
-            for k in range(remainder):
-                alloc[order[k]] += 1
-            for i, t in enumerate(type_names):
-                counts[t] = int(alloc[i])
-
+    # Determine initialization mode
     init_mode = None
-    min_distance = 0.5
-    padding = np.zeros(3, dtype=float)
     if cfg is not None and "system" in cfg and "init" in cfg.system:
         init_mode = cfg.system.init.get("mode")
-        min_distance = float(cfg.system.init.get("min_distance", min_distance))
-        pad_val = cfg.system.init.get("padding", [0.0, 0.0, 0.0])
+        min_distance = float(cfg.system.init.get("min_distance"))
+        pad_val = cfg.system.init.get("padding")
         try:
             pad_resolved = OmegaConf.to_container(pad_val, resolve=True)
         except Exception:
@@ -202,49 +275,135 @@ def setup_initial_configuration(
     init_mode = init_mode or "random"
 
     if init_mode == "uniform":
-        _init_uniform_configuration(
-            system, counts, atom_types_spec, topology, type_names, padding
-        )
+        _init_uniform_configuration(system, processed_specs, type_name_to_id, padding)
     elif init_mode == "SCC":
-        _init_scc_configuration(
-            system, counts, atom_types_spec, topology, type_names, padding
-        )
+        _init_scc_configuration(system, processed_specs, type_name_to_id, padding)
     elif init_mode == "random":
         _init_random_configuration(
-            system, counts, atom_types_spec, topology, type_names, min_distance, padding
+            system, processed_specs, type_name_to_id, min_distance, padding
         )
     else:
         raise ValueError(f"Unknown init mode: {init_mode}")
 
     if system.ewald_handler:
         system.ewald_handler.update_structure_factors(
-            system.positions[: system.N],
-            system.charges[: system.N],
+            system.positions[: system.N_atoms],
+            system.charges[: system.N_atoms],
         )
         system.ewald_handler.update_dipole_moment(
-            system.positions[: system.N],
-            system.charges[: system.N],
+            system.positions[: system.N_atoms],
+            system.charges[: system.N_atoms],
         )
+
+
+def _create_molecule(
+    position: np.ndarray,
+    molecule_type: str,
+    spec: dict,
+    type_name_to_id: Dict[str, int],
+) -> Molecule:
+    """
+    Create a molecule based on its specification.
+
+    Args:
+        position: Position for the molecule
+        molecule_type: Type of molecule ("Particle" or "Dipole")
+        spec: Specification dictionary for the molecule
+        type_name_to_id: Mapping from type names to type IDs
+
+    Returns:
+        Created molecule
+    """
+    if molecule_type == "Particle":
+        # Create a single particle
+        type_name = spec.get("type", "")
+        if type_name not in type_name_to_id:
+            raise ValueError(f"Unknown particle type: {type_name}")
+
+        type_id = type_name_to_id[type_name]
+        name = spec.get("name", type_name) or type_name
+        mass = float(spec.get("mass", 1.0))
+        charge = float(spec.get("charge", 0.0))
+
+        return Particle(
+            position=position, type_id=type_id, name=name, charge=charge, mass=mass
+        )
+
+    elif molecule_type == "Dipole":
+        # Create a dipole
+        type_plus_name = spec.get("type_plus", "")
+        type_minus_name = spec.get("type_minus", "")
+        type_ghost_name = spec.get("type_ghost", "")
+
+        if type_plus_name not in type_name_to_id:
+            raise ValueError(f"Unknown positive dipole type: {type_plus_name}")
+        if type_minus_name not in type_name_to_id:
+            raise ValueError(f"Unknown negative dipole type: {type_minus_name}")
+        if type_ghost_name and type_ghost_name not in type_name_to_id:
+            raise ValueError(f"Unknown ghost dipole type: {type_ghost_name}")
+
+        type_plus_id = type_name_to_id[type_plus_name]
+        type_minus_id = type_name_to_id[type_minus_name]
+        type_ghost_id = (
+            type_name_to_id.get(type_ghost_name) if type_ghost_name else None
+        )
+
+        length = float(spec.get("length", 0.1))
+        ghost_count = int(spec.get("ghost_count", 0))
+        name = spec.get("name", "dipole") or "dipole"
+        mass = float(spec.get("mass", 1.0))
+        charge = float(spec.get("charge", 1.0))
+
+        # Random orientation for the dipole
+        phi = np.random.random() * 2 * np.pi
+        theta = np.random.random() * np.pi
+        orientation = np.array(
+            [
+                np.sin(theta) * np.cos(phi),
+                np.sin(theta) * np.sin(phi),
+                np.cos(theta),
+            ]
+        )
+
+        return Dipole(
+            position=position,
+            orientation=orientation,
+            length=length,
+            type_plus=type_plus_id,
+            type_plus_name=type_plus_name,
+            type_minus=type_minus_id,
+            type_minus_name=type_minus_name,
+            type_ghost=type_ghost_id,
+            type_ghost_name=type_ghost_name,
+            charge=charge,
+            mass=mass,
+            ghost_count=ghost_count,
+        )
+
+    else:
+        raise ValueError(f"Unknown molecule type: {molecule_type}")
 
 
 def _init_uniform_configuration(
     system: System,
-    counts: dict,
-    atom_types_spec: dict,
-    topology: Topology,
-    type_names: List[str],
+    processed_specs: List[Tuple[str, dict, int]],
+    type_name_to_id: Dict[str, int],
     padding: np.ndarray,
 ):
-    # Build a uniform grid covering the box and place atoms of all types
-    total_N = int(sum(counts.values()))
+    """Initialize uniform grid configuration with molecules."""
+    # Calculate total number of molecules
+    total_molecules = sum(count for _, _, count in processed_specs)
+
+    # Build a uniform grid covering the box
     Lx, Ly, Lz = system.box
     # Effective lengths after padding (only for initial placement)
     eff_L = np.maximum([Lx, Ly, Lz] - 2.0 * padding, 1e-9)
     origin = padding
+
     # Choose grid divisions to make cell sizes as isotropic as possible
     nx = ny = nz = 1
     # Increment along the axis with the largest current cell size until we have enough cells
-    while nx * ny * nz < total_N:
+    while nx * ny * nz < total_molecules:
         cell_sizes = np.array([eff_L[0] / nx, eff_L[1] / ny, eff_L[2] / nz])
         axis = int(np.argmax(cell_sizes))
         if axis == 0:
@@ -253,64 +412,61 @@ def _init_uniform_configuration(
             ny += 1
         else:
             nz += 1
+
     # Generate grid points centered in cells
     xs = origin[0] + (np.arange(nx) + 0.5) * (eff_L[0] / nx)
     ys = origin[1] + (np.arange(ny) + 0.5) * (eff_L[1] / ny)
     zs = origin[2] + (np.arange(nz) + 0.5) * (eff_L[2] / nz)
     grid = np.array(np.meshgrid(xs, ys, zs, indexing="ij"))
     grid = grid.reshape(3, -1).T  # (nx*ny*nz, 3)
-    positions_list = grid[:total_N]
+    positions_list = grid[:total_molecules]
     # Shuffle positions to avoid type clustering
-    shuffle_idx = np.random.permutation(total_N)
+    shuffle_idx = np.random.permutation(total_molecules)
     positions_list = positions_list[shuffle_idx, :]
 
-    # Prepare a type assignment list according to counts
-    type_id_seq: List[int] = []
-    name_seq: List[str] = []
-    charge_seq: List[float] = []
-    mass_seq: List[float] = []
-    for t_name in type_names:
-        n_t = counts[t_name]
-        if n_t <= 0:
-            continue
-        type_id = topology.type_name_to_id.get(t_name, 0)
-        spec = atom_types_spec[t_name]
-        mass = float(spec.get("mass", 1.0))
-        charge = float(spec.get("charge", 0.0))
-        name = str(spec.get("name", t_name))
-        type_id_seq.extend([type_id] * n_t)
-        name_seq.extend([name] * n_t)
-        charge_seq.extend([charge] * n_t)
-        mass_seq.extend([mass] * n_t)
+    # Create a list of all molecules to place
+    molecules_to_place = []
+    for molecule_type, spec, count in processed_specs:
+        for _ in range(count):
+            molecules_to_place.append((molecule_type, spec))
 
-    for i in range(total_N):
-        system.add_atom(
-            position=positions_list[i],
-            atom_type=type_id_seq[i],
-            name=name_seq[i],
-            charge=charge_seq[i],
-            mass=mass_seq[i],
-        )
+    # Shuffle to randomize placement order
+    np.random.shuffle(molecules_to_place)
+
+    # Place molecules at grid points
+    for position, (molecule_type, spec) in zip(positions_list, molecules_to_place):
+        molecule = _create_molecule(position, molecule_type, spec, type_name_to_id)
+        system.add_molecule(molecule)
 
 
 def _init_scc_configuration(
     system: System,
-    counts: dict,
-    atom_types_spec: dict,
-    topology: Topology,
-    type_names: List[str],
+    processed_specs: List[Tuple[str, dict, int]],
+    type_name_to_id: Dict[str, int],
     padding: np.ndarray,
 ):
-    """Initialize simple cubic lattice configuration for KCl with alternating atoms."""
-    if len(type_names) != 2:
-        raise ValueError("SCC mode requires exactly two atom types")
+    """Initialize simple cubic lattice configuration with alternating atoms. (only for one atom molecules)"""
+    # Check for dipoles
+    for molecule_type, _, _ in processed_specs:
+        if molecule_type == "Dipole":
+            raise ValueError("SCC mode does not support dipole molecules")
 
-    total_N = int(sum(counts.values()))
+    # We need exactly two particle types
+    particle_specs = [
+        (spec, count)
+        for molecule_type, spec, count in processed_specs
+        if molecule_type == "Particle"
+    ]
+    if len(particle_specs) != 2:
+        raise ValueError("SCC mode requires exactly two particle types")
+
+    # Count total molecules
+    total_N = sum(count for _, count in particle_specs)
     if total_N % 2 != 0:
         raise ValueError("SCC mode requires even number of atoms")
 
     # Check if we can form a perfect simple cubic lattice
-    atoms_per_unit_cell = 2  # SCC has 2 atoms per unit cell (K and Cl)
+    atoms_per_unit_cell = 2  # SCC has 2 atoms per unit cell
     if total_N % atoms_per_unit_cell != 0:
         raise ValueError(
             f"SCC mode requires total atoms to be divisible by {atoms_per_unit_cell}"
@@ -331,19 +487,9 @@ def _init_scc_configuration(
     # SCC lattice parameter (distance between unit cells)
     a = min(eff_L) / lattice_dim
 
-    # Get type properties
-    type_props = {}
-    for t_name in type_names:
-        type_id = topology.type_name_to_id.get(t_name, 0)
-        spec = atom_types_spec[t_name]
-        type_props[t_name] = {
-            "id": type_id,
-            "mass": float(spec.get("mass", 1.0)),
-            "charge": float(spec.get("charge", 0.0)),
-            "name": str(spec.get("name", t_name)),
-        }
+    # Count molecules of each type to add
+    remaining_counts = {0: particle_specs[0][1], 1: particle_specs[1][1]}
 
-    # Generate SCC lattice positions with alternating K and Cl
     atom_count = 0
     for i in range(lattice_dim):
         for j in range(lattice_dim):
@@ -351,96 +497,126 @@ def _init_scc_configuration(
                 # Unit cell origin
                 cell_origin = origin + a * np.array([i, j, k])
 
-                # Place 2 atoms in this unit cell (K and Cl)
+                # Place 2 atoms in this unit cell (alternating types)
                 for basis_idx in range(2):
                     if atom_count >= total_N:
                         break
 
-                    # Calculate position (K at origin, Cl at center)
+                    # Calculate position
                     if basis_idx == 0:
-                        position = cell_origin  # K atom at origin
+                        position = cell_origin  # First atom at origin
                     else:
                         position = cell_origin + 0.5 * a * np.array(
                             [1, 1, 1]
-                        )  # Cl atom at center
+                        )  # Second at center
 
                     # Determine atom type based on position (alternating pattern)
                     # Use sum of coordinates to determine type
                     coord_sum = i + j + k + basis_idx
                     type_idx = coord_sum % 2
-                    t_name = type_names[type_idx]
 
-                    # Add atom to system
-                    props = type_props[t_name]
-                    system.add_atom(
-                        position=position,
-                        atom_type=props["id"],
-                        name=props["name"],
-                        charge=props["charge"],
-                        mass=props["mass"],
+                    # Skip if we've used all molecules of this type
+                    if remaining_counts[type_idx] <= 0:
+                        continue
+
+                    # Create and add molecule
+                    spec, _ = particle_specs[type_idx]
+                    molecule = _create_molecule(
+                        position, "Particle", spec, type_name_to_id
                     )
-
+                    system.add_molecule(molecule)
+                    remaining_counts[type_idx] -= 1
                     atom_count += 1
 
 
 def _init_random_configuration(
     system: System,
-    counts: dict,
-    atom_types_spec: dict,
-    topology: Topology,
-    type_names: List[str],
+    processed_specs: List[Tuple[str, dict, int]],
+    type_name_to_id: Dict[str, int],
     min_distance: float,
     padding: np.ndarray,
 ):
-    # Default: random placement with min distance
+    """Initialize random configuration with molecules with minimum separation."""
     box = system.box
     eff_L = np.maximum(box - 2.0 * padding, 1e-9)
     origin = padding
-    max_attempts = 5000
-    for t_name in type_names:
-        n_t = counts[t_name]
-        if n_t <= 0:
-            continue
-        type_id = topology.type_name_to_id.get(t_name, 0)
-        spec = atom_types_spec[t_name]
-        mass = float(spec.get("mass", 1.0))
-        charge = float(spec.get("charge", 0.0))
-        name = str(spec.get("name", t_name))
+    max_attempts = 10000
+    min_dist = np.inf
 
-        for _ in range(n_t):
+    # For each type specification, create and add molecules
+    for molecule_type, spec, count in processed_specs:
+        for _ in range(count):
             placed = False
             attempts = 0
+
             while not placed and attempts < max_attempts:
                 # Generate position within effective length
                 position = origin + np.random.random(3) * eff_L
 
-                if system.N > 0:
-                    distances = system.get_all_distances(
-                        position, system.positions[: system.N]
+                # Create a molecule to test (without adding it)
+                try:
+                    molecule = _create_molecule(
+                        position, molecule_type, spec, type_name_to_id
                     )
-                    too_close = np.any(distances < min_distance)
-                else:
-                    too_close = False
+                except ValueError as e:
+                    print(f"Error creating molecule: {e}")
+                    break
+
+                # Check if we can perform energy check
+                too_close = False
+
+                # Get all particles from the molecule
+                molecule_particles = molecule.get_particles()
+
+                # Check each particle in the molecule against existing atoms
+                for particle_pos, type_id, _, _, _ in molecule_particles:
+                    # Check distance to other particles
+                    if system.N_atoms > 0:
+                        # Get distances using the exact same method as in topology._single_pair_energy_forces_virial
+                        # to ensure consistency with energy calculations
+                        positions = system.positions[: system.N_atoms]
+                        dr_vectors = positions - particle_pos[np.newaxis, :]
+
+                        # Apply minimum image convention exactly as in topology
+                        dr_vectors = np.where(
+                            system.pbc[np.newaxis, :],
+                            dr_vectors
+                            - system.box[np.newaxis, :]
+                            * np.round(dr_vectors * system.inv_box[np.newaxis, :]),
+                            dr_vectors,
+                        )
+
+                        # Calculate distances
+                        distances = np.linalg.norm(dr_vectors, axis=1)
+
+                        if np.any(distances < min_distance):
+                            too_close = True
+                            break
+
+                        # Track the minimum distance for debugging
+                        if len(distances) > 0:
+                            min_dist = min(min_dist, np.min(distances))
+
                 if not too_close:
-                    system.add_atom(
-                        position=position,
-                        atom_type=type_id,
-                        name=name,
-                        charge=charge,
-                        mass=mass,
-                    )
+                    # Add the molecule to the system
+                    system.add_molecule(molecule)
                     placed = True
+
                 attempts += 1
+
             if not placed:
-                # fallback: place anyway (may be close)
-                position = origin + np.random.random(3) * eff_L
-                system.add_atom(
-                    position=position,
-                    atom_type=type_id,
-                    name=name,
-                    charge=charge,
-                    mass=mass,
-                )
+                # Fallback: place anyway (may be close)
+                print(f"Failed to place molecule: {molecule_type}")
+                # position = origin + np.random.random(3) * eff_L
+                # try:
+                #     molecule = _create_molecule(
+                #         position, molecule_type, spec, type_name_to_id
+                #     )
+                #     system.add_molecule(molecule)
+                # except ValueError as e:
+                #     print(f"Error creating molecule in fallback: {e}")
+
+    print(f"min_dist: {min_dist}")
 
 
 def _configure_pair_force(force_name: str, params: dict, units: Units):
@@ -450,12 +626,21 @@ def _configure_pair_force(force_name: str, params: dict, units: Units):
             return LennardJones(
                 sigma=float(params.get("sigma")),
                 epsilon=float(params.get("epsilon")),
+                cutoff=float(params.get("cutoff", 2.5)),
                 units=units,
             )
         else:
             raise ValueError(f"LJ parameters not provided for {force_name}")
     if name in ("ewald", "ewald_sum", "ewald_summation"):
-        return EwaldReal(units=units)
+        params = {
+            name: params.get(name)
+            for name in ["exclude_intermol"]
+            if params.get(name) is not None
+        }
+        return EwaldReal(
+            **params,
+            units=units,
+        )
     if name in ("huggins_mayer", "huggins_mayer_potential"):
         if (
             params.get("sigma") is not None
@@ -476,18 +661,104 @@ def _configure_pair_force(force_name: str, params: dict, units: Units):
             )
         else:
             raise ValueError(f"Huggins-Mayer parameters not provided for {force_name}")
+    if name in ("hard_sphere", "hard_sphere_potential"):
+        params = {
+            name: params.get(name)
+            for name in ["r1", "r2", "exclude_intermol"]
+            if params.get(name) is not None
+        }
+        return HardSphere(
+            **params,
+            units=units,
+        )
+    raise ValueError(f"Unknown force kind: {force_name}")
     return None
 
 
 def _configure_one_body_force(field_cfg: dict, units: Units):
     kind = str(field_cfg.get("kind", "uniform")).lower()
-    if kind == "uniform":
-        g = np.array(field_cfg.get("gradient", [0.0, 0.0, 0.0]), dtype=float)
-        return ExternalUniformField(g, units=units)
     if kind in ("wall", "external_wall", "wall_potential"):
-        style = field_cfg.get("style", "bottom")
-        return ExternalWallPotential(style, units=units)
+        if field_cfg.get("style") is not None:
+            return Wall_10_4_3(field_cfg.get("style"), units=units)
+        else:
+            raise ValueError(f"Wall style not provided for {kind}")
+    if kind in ("hard_wall"):
+        if field_cfg.get("style") is not None and field_cfg.get("r_wall") is not None:
+            return HardWall(
+                r_wall=float(field_cfg.get("r_wall")),
+                style=field_cfg.get("style"),
+                units=units,
+            )
+        else:
+            raise ValueError(f"Hard wall parameters not provided for {kind}")
+    if kind in ("electric_field"):
+        # Two options: specify voltage between walls or direct field vector
+        if (
+            field_cfg.get("voltage") is not None
+            and field_cfg.get("direction") is not None
+        ):
+            return ElectricField(
+                voltage=float(field_cfg.get("voltage")),
+                direction=field_cfg.get("direction"),
+                units=units,
+            )
+        else:
+            raise ValueError(
+                "Either voltage and direction must be provided for electric_field"
+            )
     raise ValueError(f"Unknown one-body field kind: {kind}")
+
+
+def check_initial_configuration_energy(system: System, topology: Topology) -> None:
+    """
+    Check the initial configuration for problematic high-energy interactions.
+    This helps identify particles that are too close to each other or to walls.
+    """
+    print("\n====== INITIAL CONFIGURATION ENERGY CHECK ======")
+
+    # Get all atoms
+    positions, molecule_ids, types, names, charges, masses = system.get_active_atoms()
+
+    # Check particle-particle overlaps
+    print("\nChecking for particle-particle overlaps...")
+    for i in range(system.N_atoms):
+        for j in range(i + 1, system.N_atoms):
+            # Calculate distance
+            r_ij = system.get_minimum_image_distance(positions[i], positions[j])
+            distance = np.linalg.norm(r_ij)
+
+            # Check against hard sphere radius (assuming 0.1 from config)
+            if distance < 0.2:  # 2 * r = 0.2
+                print(
+                    f"  Warning: Particles {i} ({names[i]}) and {j} ({names[j]}) are too close: {distance:.4f} nm"
+                )
+
+    # Check wall overlaps if no PBC in z
+    if not system.pbc[2]:
+        print("\nChecking for wall overlaps...")
+        H = system.box[2]
+        wall_distance = 0.1  # r_wall from config
+
+        for i in range(system.N_atoms):
+            z = positions[i, 2]
+            if z < wall_distance:
+                print(
+                    f"  Warning: Particle {i} ({names[i]}) too close to bottom wall: {z:.4f} nm"
+                )
+            if z > (H - wall_distance):
+                print(
+                    f"  Warning: Particle {i} ({names[i]}) too close to top wall: {(H - z):.4f} nm"
+                )
+
+    # Check total energy
+    energy = topology.get_energy(system)
+    print(f"\nInitial configuration energy: {energy:.4e} kJ/mol")
+    if energy > 1e10:
+        print(
+            "  WARNING: Extremely high energy detected! Check for overlapping particles or wall violations."
+        )
+
+    print("\n==============================================")
 
 
 def create_topology(cfg, units: Units) -> Topology:
@@ -496,71 +767,202 @@ def create_topology(cfg, units: Units) -> Topology:
     profiler = Profiler(enabled=debug)
     topology = Topology(units=units, profiler=profiler)
 
-    types_cfg = cfg.get("types", {})
+    types_cfg = cfg.get("types", [])
     if not types_cfg:
         raise ValueError("No 'types' section in configuration")
 
-    # Load per-type files and register types
-    type_order = list(types_cfg.keys())
-    per_type_params: Dict[int, dict] = {}
-    for type_id, tname in enumerate(type_order):
-        topology.register_type(type_id, tname)
-        tcfg = types_cfg[tname] or {}
-        # Optional per-type file that may contain LJ and other properties
-        mass = tcfg.get("mass")
-        charge = tcfg.get("charge")
-        per_type = {"mass": mass, "charge": charge}
-        per_type_params[type_id] = per_type
-        topology.set_type_properties(type_id, per_type)
+    # Register types from the new format
+    for type_entry in types_cfg:
+        # Check if it's a dict
+        if not isinstance(type_entry, dict) and not isinstance(type_entry, DictConfig):
+            continue
+
+        # Convert from OmegaConf container to dict if needed
+        if isinstance(type_entry, (DictConfig)):
+            type_entry = OmegaConf.to_container(type_entry, resolve=True)
+
+        # Handle nested dictionaries
+        if "Particle" in type_entry and type_entry["Particle"] is not None:
+            properties = type_entry["Particle"]
+
+            # Register a single type for the particle
+            type_name = str(properties.get("type", ""))
+            if not type_name:
+                continue
+
+            type_id = len(topology.type_name_to_id)
+            topology.register_type(type_id, type_name)
+
+            # Set type properties
+            type_properties = {
+                "mass": float(properties.get("mass", 1.0)),
+                "charge": float(properties.get("charge", 0.0)),
+            }
+            topology.set_type_properties(type_id, type_properties)
+
+        elif "Dipole" in type_entry and type_entry["Dipole"] is not None:
+            properties = type_entry["Dipole"]
+
+            # Register types for positive, negative, and ghost particles
+            type_plus = str(properties.get("type_plus", ""))
+            type_minus = str(properties.get("type_minus", ""))
+            type_ghost = str(properties.get("type_ghost", ""))
+
+            if type_plus:
+                plus_id = len(topology.type_name_to_id)
+                topology.register_type(plus_id, type_plus)
+                topology.set_type_properties(
+                    plus_id,
+                    {
+                        "mass": float(properties.get("mass", 1.0)),
+                        "charge": abs(float(properties.get("charge", 1.0))),
+                    },
+                )
+
+            if type_minus:
+                minus_id = len(topology.type_name_to_id)
+                topology.register_type(minus_id, type_minus)
+                topology.set_type_properties(
+                    minus_id,
+                    {
+                        "mass": float(properties.get("mass", 1.0)),
+                        "charge": -abs(float(properties.get("charge", 1.0))),
+                    },
+                )
+
+            if type_ghost:
+                ghost_id = len(topology.type_name_to_id)
+                topology.register_type(ghost_id, type_ghost)
+                topology.set_type_properties(
+                    ghost_id,
+                    {
+                        "mass": 0.0,
+                        "charge": 0.0,
+                    },
+                )
 
     # Build forces per pair
     pairs_cfg = cfg.get("pairs", [])
     if pairs_cfg:
-        # Explicit pairs config; require two-type entries only for pairwise interactions
-        type_name_to_id = topology.type_name_to_id
+        # Explicit pairs config
         for pair in pairs_cfg:
-            tnames = pair.get("types")
-            if not tnames:
-                raise ValueError("Each pairs entry must have exactly two 'types'")
-            # Accept list-like from OmegaConf
-            tnames = list(tnames)
-            if len(tnames) != 2:
-                raise ValueError("Each pairs entry must have exactly two 'types'")
+            pair_types = pair.get("types")
+            if not pair_types:
+                raise ValueError("Each pairs entry must have 'types' field")
+
+            # Handle special syntax in yaml
+            if len(pair_types) == 2:
+                # Parse the types, handling cases like [Na, (Ip, Im)]
+                type_pairs = parse_type_pairs(pair_types)
+            else:
+                raise ValueError(f"Invalid pair types: {pair_types}")
+
             forces_cfg = pair.get("forces", [])
 
-            t1 = type_name_to_id[tnames[0]]
-            t2 = type_name_to_id[tnames[1]]
+            for type1_name, type2_name in type_pairs:
+                if (
+                    type1_name not in topology.type_name_to_id
+                    or type2_name not in topology.type_name_to_id
+                ):
+                    continue
 
-            force_objs = []
-            for fcfg in forces_cfg:
-                f = _configure_pair_force(fcfg.get("kind", ""), fcfg, units)
-                if f is None:
-                    raise ValueError(f"Unknown force kind in pair {tnames}: {fcfg}")
-                force_objs.append(f)
+                type1_id = topology.type_name_to_id[type1_name]
+                type2_id = topology.type_name_to_id[type2_name]
 
-            # If multiple forces on same pair, we can just add each; Topology sums them.
-            for f in force_objs:
-                topology.add_interaction(t1, t2, f)
+                # Add all forces for this pair
+                for fcfg in forces_cfg:
+                    force = _configure_pair_force(fcfg.get("kind", ""), fcfg, units)
+                    if force is None:
+                        raise ValueError(
+                            f"Unknown force kind in pair {(type1_name, type2_name)}: {fcfg}"
+                        )
 
-    # One-body fields (new dedicated section)
+                    topology.add_interaction(type1_id, type2_id, force)
+
+    # One-body fields
     for entry in cfg.get("one_body", []) or []:
-        tname = entry.get("type")
-        if tname is None:
+        type_spec = entry.get("type")
+        if type_spec is None:
+            raise ValueError(f"Missing 'type' in one-body entry: {entry}")
+
+        # Parse type(s) - handle groups like "(Na, Cl, Ip, Im, G)"
+        type_names = []
+        if isinstance(type_spec, str):
+            # Check if it's a group expression like "(Na, Cl, Ip, Im, G)"
+            type_spec = type_spec.strip()
+            if type_spec.startswith("(") and type_spec.endswith(")"):
+                # Extract content within parentheses and split by comma
+                content = type_spec[1:-1]
+                type_names = [t.strip() for t in content.split(",")]
+            else:
+                type_names = [type_spec]
+        elif isinstance(type_spec, (list, tuple, ListConfig)):
+            type_names = list(type_spec)
+        else:
+            type_names = [str(type_spec)]
+
+        # Validate all type names exist in the topology
+        valid_types = []
+        for type_name in type_names:
+            if type_name in topology.type_name_to_id:
+                valid_types.append((type_name, topology.type_name_to_id[type_name]))
+            else:
+                print(
+                    f"Warning: One-body type '{type_name}' not found in topology, skipping"
+                )
+
+        if not valid_types:
+            print(f"Warning: No valid types found in one-body entry: {entry}")
             continue
-        t_id = topology.type_name_to_id[tname]
+
         forces_list = entry.get("forces", [])
+
         # Accept OmegaConf ListConfig as a list-like container
         if not isinstance(forces_list, (list, tuple)) and not (
             "ListConfig" in globals() and isinstance(forces_list, ListConfig)
         ):
             forces_list = [forces_list]
-        for fcfg in forces_list:
-            if isinstance(fcfg, str):
-                fcfg = {"kind": fcfg}
-            if not fcfg.get("enabled", True):
-                continue
-            field = _configure_one_body_force(fcfg, units)
-            topology.add_one_body_force(t_id, field)
+
+        # For each valid type, add all forces
+        for type_name, type_id in valid_types:
+            for fcfg in forces_list:
+                if isinstance(fcfg, str):
+                    fcfg = {"kind": fcfg}
+                if not fcfg.get("enabled", True):
+                    continue
+
+                field = _configure_one_body_force(fcfg, units)
+                topology.add_one_body_force(type_id, field)
+
+    # Print summary of configured interactions
+    print("\n====== TOPOLOGY CONFIGURATION SUMMARY ======")
+
+    # Print registered types
+    print("\nRegistered Types:")
+    for type_id, type_name in topology.type_id_to_name.items():
+        props = topology.type_properties.get(type_id, {})
+        mass = props.get("mass", "N/A")
+        charge = props.get("charge", "N/A")
+        print(f"  {type_id}: {type_name} (mass={mass}, charge={charge})")
+
+    # Print pair interactions
+    print("\nPair Interactions:")
+    for (type1_id, type2_id), forces in topology.interactions.items():
+        type1_name = topology.type_id_to_name.get(type1_id, f"Type{type1_id}")
+        type2_name = topology.type_id_to_name.get(type2_id, f"Type{type2_id}")
+        force_names = [f.__class__.__name__ for f in forces]
+        print(
+            f"  {type1_name}({type1_id}) - {type2_name}({type2_id}): {', '.join(force_names)}"
+        )
+
+    # Print one-body forces
+    print("\nOne-Body Forces:")
+    for type_id, forces in topology.one_body_forces.items():
+        type_name = topology.type_id_to_name.get(type_id, f"Type{type_id}")
+        force_names = [f.__class__.__name__ for f in forces]
+        print(f"  {type_name}({type_id}): {', '.join(force_names)}")
+
+    print("\n==========================================")
 
     return topology
 
@@ -574,6 +976,7 @@ def create_sampler(
         actions = [{"action": "translate", "probability": 1.0}]
 
     max_displacement = cfg.sampler.get("max_displacement", 0.1)
+    max_rotation = cfg.sampler.get("max_rotation", 10)
     debug = bool(cfg.get("debug", False))
     force_recompute = bool(cfg.sampler.get("force_recompute", False))
 
@@ -582,6 +985,7 @@ def create_sampler(
         topology=topology,
         actions=actions,
         max_displacement=max_displacement,
+        max_rotation=max_rotation,
         logger=logger,
         units=units,
         debug=debug,

@@ -1,0 +1,154 @@
+# Test configuration with dipole molecules mixed with particles
+experiment:
+  name: "ions_dipole_test"
+  results_dir: "results"
+  description: "Mixed system of ions and dipoles in NVT ensemble"
+
+units:
+  system: "standard"
+
+simulation:
+  ensemble: "NVT"
+  temperature: 378.15 # K
+  n_steps: 100000  # Shorter run for testing
+
+system:
+  # n_atoms: 256  # This will be used for counts or fractions, actual atom count may differ
+  initial_capacity: 1024
+  init:
+    mode: "random"
+    min_distance: 0.21  # Increased to prevent overlaps
+    padding: [0.0, 0.0, 0.31]  # Increased padding in all directions
+  v: 48.80 # cm^3 / mol
+  L: 3.0 # nm
+  box:
+    - ${system.L}
+    - ${system.L}
+    - ${system.L}
+  pbc: [true, true, false]
+
+ewald:
+  alpha: 1.2
+  real_cut: 1.4
+  n_c: 3
+  dielectric: 78.0
+  z_scale_factor: 4.0
+  dipole_correction: true
+
+types:
+  - Particle:
+      type: "Na"
+      mass: 39.0983 # amu
+      charge: 1.0 # e
+      count: 100
+  - Particle:
+      type: "Cl"
+      mass: 35.453 # amu
+      charge: -1.0 # e
+      count: 100
+  - Dipole:
+      type_plus: "Ip"
+      type_minus: "Im"
+      type_ghost: "G"
+      length: 0.4  # nm
+      ghost_count: 1
+      mass: 18.01528 # amu
+      charge: 1 # e
+      count: 40
+
+
+r_NaCl: 0.1
+r_IpImG: 0.1
+
+pairs:
+  # ion-ion interactions
+  - types: [Na, Na]
+    forces:
+      - kind: hard_sphere
+        r1: ${r_NaCl}
+        r2: ${r_NaCl}
+      - kind: ewald
+
+  - types: [Cl, Cl]
+    forces:
+      - kind: hard_sphere
+        r1: ${r_NaCl}
+        r2: ${r_NaCl}
+      - kind: ewald
+
+  - types: [Na, Cl]
+    forces:
+      - kind: hard_sphere
+        r1: ${r_NaCl}
+        r2: ${r_NaCl}
+      - kind: ewald
+
+  # ion-dipole interactions
+  - types: ["(Na, Cl)", "(Ip, Im)"]
+    forces:
+      - kind: hard_sphere
+        r1: ${r_NaCl}
+        r2: ${r_IpImG}
+      - kind: ewald
+
+  - types: ["(Na, Cl)", "G"]
+    forces:
+      - kind: hard_sphere
+        r1: ${r_NaCl}
+        r2: ${r_IpImG}
+
+  # dipole-dipole interactions
+  - types: [Ip, Im]
+    forces:
+      - kind: hard_sphere
+        r1: ${r_IpImG}
+        r2: ${r_IpImG}
+        exclude_intermol: true
+      - kind: ewald
+
+  - types: ["(Ip, Im)", "G"]
+    forces:
+      - kind: hard_sphere
+        r1: ${r_IpImG}
+        r2: ${r_IpImG}
+        exclude_intermol: true
+
+one_body:
+  - type: "(Na, Cl)"
+    forces:
+      - kind: hard_wall
+        style: bottom
+        r_wall: ${r_NaCl}
+      - kind: hard_wall
+        style: top
+        r_wall: ${r_NaCl}
+      - kind: electric_field
+        voltage: 0.5  # V
+        direction: up
+
+  - type: "(Ip, Im, G)"
+    forces:
+        - kind: hard_wall
+          style: bottom
+          r_wall: ${r_IpImG}
+        - kind: hard_wall
+          style: top
+          r_wall: ${r_IpImG}
+        - kind: electric_field
+          voltage: 0.5  # V
+          direction: up
+
+
+sampler:
+  actions:
+    - action: "translate"
+      probability: 1.0
+  max_displacement: 0.05
+  max_rotation: 30
+  force_recompute: false
+
+debug: false
+
+logger:
+  log_interval: 10
+  xyz_interval: 10

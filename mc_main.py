@@ -39,17 +39,7 @@ def run_simulation(config_file: str, overrides=None):
     topology = create_topology(cfg, units)
     setup_initial_configuration(
         system,
-        cfg.get(
-            "types",
-            {
-                topology.type_id_to_name.get(0, "Ar"): {
-                    "count": getattr(system, "_target_n_atoms", 0),
-                    "name": topology.type_id_to_name.get(0, "Ar"),
-                    "mass": 39.948,
-                    "charge": 0.0,
-                }
-            },
-        ),
+        cfg.get("types", []),
         topology,
         cfg=cfg,
     )
@@ -62,6 +52,12 @@ def run_simulation(config_file: str, overrides=None):
 
     # Run simulation
     n_steps = cfg.simulation.get("n_steps", 1000)
+
+    # Check initial configuration for problems
+    # from src.utils import check_initial_configuration_energy
+
+    # check_initial_configuration_energy(system, topology)
+
     print(f"Running {n_steps} Monte Carlo steps...")
 
     initial_energy = topology.get_energy(system)
@@ -92,7 +88,7 @@ def run_simulation(config_file: str, overrides=None):
         final_energy = topology.get_energy(system)
         final_virial = system.virial
         print(f"Final energy: {final_energy:.6f} {units.energy_label}")
-        print(f"Final number of atoms: {system.N}")
+        print(f"Final number of atoms: {system.N_atoms}")
 
         # Recompute full energy from scratch for verification
         topology.recompute_caches(system)

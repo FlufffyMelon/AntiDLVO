@@ -22,6 +22,7 @@ class Sampler:
         topology: Topology,
         actions: List[Dict[str, Any]],
         max_displacement: float = 0.1,
+        max_rotation: float = 10,
         logger: Logger = None,
         units: Units = None,
         insert_type_probabilities: Optional[Dict[int, float]] = None,
@@ -48,6 +49,7 @@ class Sampler:
         self.system = system
         self.topology = topology
         self.max_displacement = max_displacement
+        self.max_rotation = max_rotation
         self.logger = logger
         self.units = units or Units()
         self.insert_type_probabilities = insert_type_probabilities
@@ -143,14 +145,14 @@ class Sampler:
         Returns NaN if density is zero.
         """
         rho = self.system.get_density()
-        if self.system.N <= 0 or rho <= 0.0:
+        if self.system.N_atoms <= 0 or rho <= 0.0:
             return float("nan")
         if self.units.system_name == "lj":
             Lambda = 1.0
         else:
             avg_mass = (
-                float(np.mean(self.system.masses[: self.system.N]))
-                if self.system.N > 0
+                float(np.mean(self.system.masses[: self.system.N_atoms]))
+                if self.system.N_atoms > 0
                 else 1.0
             )
             Lambda = self._thermal_de_broglie_wavelength(avg_mass)
@@ -210,28 +212,82 @@ class Sampler:
                     with self.profiler.measure("write_xyz"):
                         self.logger.write_xyz(self.system, self.n_moves, self.topology)
 
+    def _generate_random_rotation(self) -> np.ndarray:
+        """
+        Generate a random 3D rotation matrix using Euler angles.
+
+        Returns:
+            3x3 rotation matrix
+        """
+        # Generate three random numbers for Euler angles
+        u1, u2, u3 = self.rng.random(3)
+
+        # Max rotation angle in radians
+        max_angle = self.max_rotation * np.pi / 180.0
+
+        # Uniformly sample rotation axis (theta, phi) and angle
+        theta = 2 * np.pi * u1  # azimuthal angle [0, 2pi)
+        phi = np.arccos(2 * u2 - 1)  # polar angle [0, pi]
+        angle = u3 * max_angle  # rotation angle [0, max_angle]
+
+        # Rotation axis (unit vector)
+        x = np.sin(phi) * np.cos(theta)
+        y = np.sin(phi) * np.sin(theta)
+        z = np.cos(phi)
+        axis = np.array([x, y, z])
+
+        # Rodrigues' rotation formula
+        K = np.array([[0, -z, y], [z, 0, -x], [-y, x, 0]])
+        identity = np.eye(3)
+        axis_outer = np.outer(axis, axis)
+        R = (
+            identity * np.cos(angle)
+            + (1 - np.cos(angle)) * axis_outer
+            + np.sin(angle) * K
+        )
+        return R
+
     def _attempt_translation(self) -> None:
-        """Attempt to translate a random atom (NVT/NPT/muVT)."""
-        if self.system.N == 0:
+        """Attempt to translate and rotate a random molecule (NVT/NPT/muVT)."""
+        if self.system.N_atoms == 0 or self.system.N_molecules == 0:
             return
 
         if self.force_recompute:
             self.topology.recompute_caches(self.system)
             self._audit_E_before_real = float(self.topology.get_energy(self.system))
 
-        # Select random atom
-        atom_id = self.rng.integers(0, self.system.N)
+        # Select a random molecule
+        molecule_id = self.rng.integers(0, self.system.N_molecules)
+
+        # Get atoms in this molecule
+        atom_indices = self.system.get_molecule_atoms(molecule_id)
+        if len(atom_indices) == 0:
+            return
 
         # Generate random displacement
         displacement = (self.rng.random(3) - 0.5) * 2 * self.max_displacement
-        old_position = self.system.positions[atom_id].copy()
-        new_position = self.system.apply_pbc(old_position + displacement)
+        old_positions = self.system.positions[atom_indices, :].copy()
 
-        # Calculate energy difference
+        if len(atom_indices) > 1:
+            # For molecules: translate and rotate
+            unwrapped = self.system.unwrap_molecule(old_positions)
+            centroid = np.mean(unwrapped, axis=0)
+
+            rotation_matrix = self._generate_random_rotation()
+
+            centered = unwrapped - centroid
+            rotated = centered @ rotation_matrix
+            translated = rotated + centroid + displacement
+            new_positions = self.system.apply_pbc(translated)
+        else:
+            # For single particles, just apply PBC after translation
+            new_positions = self.system.apply_pbc(old_positions + displacement)
+
+        # Calculate the new energy
         with self.profiler.measure("energy_diff_translate"):
             energy_diff, delta_virial, delta_S_c, delta_S_s = (
                 self.topology.get_energy_difference_translation(
-                    atom_id, new_position, self.system
+                    atom_indices, new_positions, self.system
                 )
             )
 
@@ -241,44 +297,38 @@ class Sampler:
         # Accept or reject (NVT rule also applies to NPT/muVT translations)
         beta = 1.0 / (self.kb * self.system.temp)
 
-        accepted = energy_diff <= 0.0 or self.rng.random() < np.exp(-beta * energy_diff)
+        if np.isinf(energy_diff):
+            accepted = False
+        else:
+            accepted = energy_diff <= 0.0 or self.rng.random() < np.exp(
+                -beta * energy_diff
+            )
+
         if accepted:
             with self.profiler.measure("translate_accepted"):
                 # Update position
-                self.system.positions[atom_id] = new_position
+                self.system.positions[atom_indices] = new_positions
                 # Update caches: potential energy and virial
                 if self.system.potential_energy is None or self.system.virial is None:
                     self.topology.recompute_caches(self.system)
                 else:
-                    # self.system.potential_energy += getattr(
-                    #     self.topology, "_last_delta_energy", 0.0
-                    # )
                     self.system.potential_energy += energy_diff
-                    # self.system.virial += getattr(self.topology, "_last_delta_virial", 0.0)
                     self.system.virial += delta_virial
                 # Update Ewald structure factors if enabled
                 if self.system.ewald_handler:
                     with self.profiler.measure("ewald_update_structure_factors"):
-                        # self.system.ewald_handler.update_structure_factors(
-                        #     self.system.positions[: self.system.N],
-                        #     self.system.charges[: self.system.N],
-                        # )
                         self.system.ewald_handler.update_structure_factors_from_delta(
-                            atom_id, delta_S_c, delta_S_s
+                            atom_indices, delta_S_c, delta_S_s
                         )
                     with self.profiler.measure("ewald_update_dipole_moment"):
                         self.system.ewald_handler.update_dipole_moment(
-                            self.system.positions[: self.system.N],
-                            self.system.charges[: self.system.N],
+                            self.system.positions[: self.system.N_atoms],
+                            self.system.charges[: self.system.N_atoms],
                         )
                 self.n_accepted["translate"] += 1
                 self.n_accepted["total"] += 1
-        # else:
-        # Rejected; clear last deltas
-        # self.topology._last_delta_energy = 0.0
-        # self.topology._last_delta_virial = 0.0
 
-        if self.force_recompute:
+        if self.force_recompute and not np.isinf(energy_diff):
             self._force_recompute_audit_after(
                 "translate", float(energy_diff) if accepted else 0.0
             )

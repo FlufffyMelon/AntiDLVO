@@ -12,8 +12,9 @@ class EwaldReal(Force):
     The reciprocal-space and self-energy terms are managed by EwaldHandler.
     """
 
-    def __init__(self, units: Units = None):
+    def __init__(self, exclude_intermol: bool = False, units: Units = None):
         super().__init__(units)
+        self.exclude_intermol = exclude_intermol
 
     def __call__(
         self,

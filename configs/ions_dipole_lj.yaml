@@ -1,0 +1,128 @@
+# Test configuration with dipole molecules mixed with particles
+experiment:
+  name: "ions_dipole_test"
+  results_dir: "results"
+  description: "Mixed system of ions and dipoles in NVT ensemble"
+
+units:
+  system: "standard"
+
+simulation:
+  ensemble: "NVT"
+  temperature: 278 # K
+  n_steps: 1000  # Shorter run for testing
+
+system:
+  # n_atoms: 256  # This will be used for counts or fractions, actual atom count may differ
+  initial_capacity: 1024
+  init:
+    mode: "random"
+    min_distance: 0.25  # Increased to prevent overlaps
+    padding: [0.0, 0.0, 0.3]  # Increased padding in all directions
+  v: 48.80 # cm^3 / mol
+  L: 3.0 # nm
+  box:
+    - ${system.L}
+    - ${system.L}
+    - ${system.L}
+  pbc: [true, true, true]
+
+ewald:
+  alpha: 1.2
+  real_cut: 1.4
+  n_c: 3
+  dielectric: 1.0
+  z_scale_factor: 1.0
+  dipole_correction: false
+
+types:
+  - Particle:
+      type: "Na"
+      mass: 39.0983 # amu
+      charge: 1.0 # e
+      count: 100
+  - Particle:
+      type: "Cl"
+      mass: 35.453 # amu
+      charge: -1.0 # e
+      count: 100
+  - Dipole:
+      type_plus: "Ip"
+      type_minus: "Im"
+      type_ghost: "G"
+      length: 0.5  # nm
+      ghost_count: 1
+      mass: 18.01528 # amu
+      charge: 1 # e
+      count: 28
+
+pairs:
+  # ion-ion interactions
+  - types: [Na, Na]
+    forces:
+      - kind: lj
+        sigma: 0.3
+        epsilon: 0.2
+        cutoff: 2.5
+      - kind: ewald
+
+  - types: [Cl, Cl]
+    forces:
+      - kind: lj
+        sigma: 0.3
+        epsilon: 0.2
+        cutoff: 2.5
+      - kind: ewald
+
+  - types: [Na, Cl]
+    forces:
+      - kind: lj
+        sigma: 0.3
+        epsilon: 0.2
+        cutoff: 2.5
+      - kind: ewald
+
+  # ion-dipole interactions
+  - types: ["(Na, Cl)", "(Ip, Im)"]
+    forces:
+      - kind: lj
+        sigma: 0.3
+        epsilon: 0.2
+        cutoff: 2.5
+      - kind: ewald
+
+  - types: ["(Na, Cl)", "G"]
+    forces:
+      - kind: lj
+        sigma: 0.3
+        epsilon: 0.2
+        cutoff: 2.5
+
+  # dipole-dipole interactions
+  - types: [Ip, Im]
+    forces:
+      - kind: ewald
+
+# one_body:
+#   - type: "(Na, Cl, Ip, Im, G)"
+#     forces:
+#       - kind: hard_wall
+#         style: bottom
+#         r_wall: 0.1
+#       - kind: hard_wall
+#         style: top
+#         r_wall: 0.1
+
+sampler:
+  actions:
+    - action: "translate"
+      probability: 1.0
+  max_displacement: 0.05
+  max_rotation: 30
+  force_recompute: false
+
+debug: false
+
+logger:
+  log_interval: 10
+  xyz_interval: 10

@@ -4,21 +4,19 @@ from units import Units
 from .basic_force import OneBodyForce
 
 
-class Wall_10_4_3(OneBodyForce):
+class HardWall(OneBodyForce):
     """
-    External wall potential acting along z from planar wall.
-
-    U(z) = 2*pi*[ 2/(5*z^10) - 1/z^4 - 1/(3*Delta* (z + 0.61*Delta)^3 ) ]
-    with Delta = 1/sqrt(2).
+    Hard wall potential acting along z from planar wall.
+    U(z) = inf for z < 0, 0 for z > 0.
     """
 
-    def __init__(self, style: str, units: Units = None):
+    def __init__(self, r_wall: float, style: str, units: Units = None):
         super().__init__(units)
         assert style in ["bottom", "top"], f"Unknown wall style: {style}"
+        self.r_wall = r_wall
         self.style = style
-        self._two_pi = 2.0 * np.pi
-        self._delta = 1.0 / np.sqrt(2.0)
-        self._a = 0.61 * self._delta
+
+        self.big_number = float(np.inf)
 
     def __call__(
         self,
@@ -43,21 +41,15 @@ class Wall_10_4_3(OneBodyForce):
         z_eff = np.maximum(z, 1e-12)
 
         # Energy calculation: U(z)
-        term1_z = (2.0 / 5.0) * (z_eff**-10)
-        term2_z = -(z_eff**-4)
-        term3_z = -1.0 / (3.0 * self._delta * ((z_eff + self._a) ** 3))
-        energy = self._two_pi * (term1_z + term2_z + term3_z)
+        energy = np.where(z_eff < self.r_wall, self.big_number, 0.0)
 
         # Force calculation: Fz = -dU/dz = -U'(z)
-        d1_z = -4.0 * (z_eff**-11)
-        d2_z = 4.0 * (z_eff**-5)
-        d3_z = (1.0 / self._delta) * ((z_eff + self._a) ** -4)
-        Fz = -self._two_pi * (d1_z + d2_z + d3_z)
+        Fz = np.where(z_eff < self.r_wall, self.big_number, 0.0)
 
         if self.style == "top":
             Fz = -Fz
 
-        forces = np.zeros((pos_arr.shape[0], 3), dtype=np.float64)
+        forces = np.zeros_like(pos_arr)
         forces[:, 2] = Fz
 
         return np.sum(energy), forces

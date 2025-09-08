@@ -165,7 +165,7 @@ class Logger:
 
         # Write to log file (keep header format unchanged)
         line = (
-            f"{step:>10d} {current_time:>10.2f} {system.N:>8d} "
+            f"{step:>10d} {current_time:>10.2f} {system.N_atoms:>8d} "
             f"{energy:>15.6e} {energy_tail:>15.6e} {energy_total:>15.6e} {system.temp:>10.2f} {volume:>12.4f} "
             f"{density:>12.6f} {pressure_ideal:>12.6f} {pressure_virial:>12.6f} {pressure_tail:>12.6f} {pressure_total:>12.6f} {mu_id:>15.6e} {acceptance_total:>12.4f} {action_ratios}"
         )
@@ -211,7 +211,7 @@ class Logger:
         row_map: Dict[str, Any] = {
             "step": step,
             "time_s": current_time,
-            "n_atoms": system.N,
+            "n_atoms": system.N_atoms,
             "energy_pot": energy,
             "energy_tail": energy_tail,
             "energy_total": energy_total,
@@ -261,10 +261,12 @@ class Logger:
             step: Current step number
             topology: Topology object for energy calculation (optional)
         """
-        if system.N == 0:
+        if system.N_atoms == 0:
             return
 
-        positions, types, names, charges, masses = system.get_active_atoms()
+        positions, molecule_ids, types, names, charges, masses = (
+            system.get_active_atoms()
+        )
 
         # Build extxyz header key=value pairs
         # Lattice as 9-vector row-major
@@ -309,13 +311,13 @@ class Logger:
                 pos_out[:, dim] = np.mod(pos_out[:, dim], L)
 
         if self._xyz_handle:
-            self._xyz_handle.write(f"{system.N}\n")
+            self._xyz_handle.write(f"{system.N_atoms}\n")
             self._xyz_handle.write(
                 f'Lattice="{lattice_str}" pbc="{pbc_str}" {properties_str} {energy_str} {temp_str} {press_str} {step_str} {time_str} {units_str} {ensemble_str}\n'
             )
 
             # Per-atom lines in the order specified by Properties
-            for i in range(system.N):
+            for i in range(system.N_atoms):
                 species = names[i] if names[i] else "X"
                 x, y, z = pos_out[i]
                 q = charges[i]
@@ -356,7 +358,7 @@ class Logger:
             self.log_info(f"Pressure: {system.pressure} {self.units.pressure_label}")
         if system.mu is not None:
             self.log_info(f"Chemical potential: {system.mu} {self.units.energy_label}")
-        self.log_info(f"Initial atoms: {system.N}")
+        self.log_info(f"Initial atoms: {system.N_atoms}")
         self.log_info(f"Box dimensions: {system.box} {self.units.length_label}")
         self.log_info(f"PBC: {system.pbc}")
         self.log_info(f"Output directory: {self.output_dir}")
@@ -368,7 +370,7 @@ class Logger:
         """Log simulation completion information."""
         total_time = time.time() - self.start_time
         self.log_info("Simulation completed")
-        self.log_info(f"Final atoms: {system.N}")
+        self.log_info(f"Final atoms: {system.N_atoms}")
         self.log_info(f"Total time: {total_time:.2f} seconds")
 
         if sampler:
