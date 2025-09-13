@@ -1,0 +1,109 @@
+# Monte Carlo (displacement-only, canonical NVT) LJ fluid with LAMMPS fix gcmc
+
+# ---------------------------
+# Parameters
+# ---------------------------
+# variable        L           equal 5.0           # box length (sigma)
+variable        N           index 1024          # number of atoms
+variable        rho         index 0.8           # number density (N / L^3)
+variable        T           index 0.9           # temperature (LJ units)
+variable        nsteps      index 200000        # total MC steps (LAMMPS timesteps)
+variable        dump_freq   index 100           # XYZ dump frequency (steps)
+variable        stats_freq  index 10            # frequency for writing stats table
+variable        mc_every    index 1             # apply fix gcmc every this many steps
+variable        mc_repeat   index 1             # MC sub-cycles per application
+variable        seed        index 12345         # RNG seed
+variable        max_disp    index 0.1           # max translation displacement (sigma)
+variable        tag         index lj_nvt        # tag for outputs
+variable        outdir      index ./results     # output directory
+
+# Equal-style wrappers for thermo printing
+variable        rho_eq      equal v_rho
+variable        T_eq        equal v_T
+
+# ---------------------------
+# Initialization
+# ---------------------------
+units           lj
+dimension       3
+boundary        p p p
+atom_style      atomic
+
+# Optional: write a distinct log per run/tag (directory provided by wrapper script)
+log             ${outdir}/log_${tag}.lammps
+
+# ---------------------------
+# System build at target density (with random Initialization)
+# ---------------------------
+# variable        N           equal round(v_rho*v_L*v_L*v_L)
+# region          box block 0 ${L} 0 ${L} 0 ${L}
+# create_box      1 box
+# create_atoms    1 random ${N} ${seed} box
+# mass            1 1.0
+
+# ---------------------------
+# System build at target density (placing in scc lattice)
+# ---------------------------
+variable        L           equal (v_N/v_rho)^(1.0/3.0)
+# Choose SC lattice spacing so sites >= N: a = (L^3 / N)^(1/3)
+
+region          box block 0 ${L} 0 ${L} 0 ${L}
+create_box      1 box
+lattice         sc ${rho}
+create_atoms    1 box
+mass            1 1.0
+group           atoms region box
+
+# Delete extra sites to get exactly N atoms
+variable        nall equal atoms
+variable        ndel equal v_nall - v_N
+if "${ndel} > 0" then "delete_atoms random count ${ndel} no atoms box ${seed}"
+
+# ---------------------------
+# Interactions
+# ---------------------------
+pair_style      lj/cut 2.5
+pair_modify     tail yes
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    delay 0 every 1 check yes
+
+# ---------------------------
+# Thermo/pressure bookkeeping
+# ---------------------------
+# Assign velocities once so thermo temperature/pressure have reasonable values
+velocity        all create ${T} ${seed} mom yes rot yes dist gaussian
+
+# ---------------------------
+# Monte Carlo (canonical displacement-only)
+# ---------------------------
+# Displacement-only canonical MC: X=0 (no exchanges), M=${mc_repeat} translational moves
+# Syntax: gcmc N X M type seed T mu displace [keywords]
+fix             mc all gcmc ${mc_every} 0 ${mc_repeat} 1 ${seed} ${T} 0.0 ${max_disp} mcmoves 1.0 0.0 0.0
+
+# ---------------------------
+# Output
+# ---------------------------
+thermo          ${dump_freq}
+thermo_style    custom step atoms v_rho_eq v_T_eq pe press vol
+
+dump            dxyz all xyz ${dump_freq} ${outdir}/${tag}.xyz
+dump_modify     dxyz sort id
+
+# ---------------------------
+# Analysis-friendly stats output (CSV-like)
+# ---------------------------
+compute         t_all all temp
+compute         p_all all pressure t_all
+compute         pe_all all pe
+variable        step equal step
+variable        vol  equal vol
+variable        natoms equal atoms
+fix             stats all ave/time ${stats_freq} 1 ${stats_freq} c_t_all c_pe_all c_p_all v_vol v_natoms file ${outdir}/stats_${tag}.csv ave one title1 "step temp pe press vol natoms"
+
+# ---------------------------
+# Run
+# ---------------------------
+run             ${nsteps}
+
+

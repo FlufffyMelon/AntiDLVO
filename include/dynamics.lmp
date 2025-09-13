@@ -1,0 +1,27 @@
+# =============================================================================
+# HYBRID MC/MD CONFIGURATION
+# =============================================================================
+# This file configures a hybrid Monte Carlo/Molecular Dynamics simulation:
+# - Temperature initialization
+# - Temperature calculations for MC and MD
+# - Note: Time integration is set in main input file
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. Initialize velocities according to temperature
+# -----------------------------------------------------------------------------
+velocity        all create ${T} ${seed} mom yes rot yes dist gaussian
+
+# -----------------------------------------------------------------------------
+# 2. Set up temperature calculations for MC/MD
+# -----------------------------------------------------------------------------
+# Define temperature computes for all groups
+compute         temp_na na temp
+compute         temp_cl cl temp
+compute         temp_dipoles dipoles temp
+compute         temp_all all temp
+
+# Make sure temperature computes correctly handle changing atom counts
+compute_modify  temp_na dynamic/dof yes
+compute_modify  temp_cl dynamic/dof yes
+compute_modify  temp_all dynamic/dof yes

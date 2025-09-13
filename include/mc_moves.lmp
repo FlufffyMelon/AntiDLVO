@@ -1,0 +1,42 @@
+# =============================================================================
+# MONTE CARLO MOVES CONFIGURATION
+# =============================================================================
+# This file sets up the pure Monte Carlo moves for the simulation using GCMC:
+# - GCMC moves for Na+ ions (insertion, deletion, translation)
+# - GCMC moves for Cl- ions (insertion, deletion, translation)
+# - GCMC moves for dipole molecules (insertion, deletion, translation, rotation)
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. Define Monte Carlo parameters
+# -----------------------------------------------------------------------------
+# Maximum displacement distance for MC moves
+variable        mc_disp equal 0.2      # Maximum displacement distance
+variable        mu_Na equal 0          # Chemical potential for Na+ ions
+variable        mu_Cl equal 0          # Chemical potential for Cl- ions
+variable        mu_dip equal 0         # Chemical potential for dipoles
+variable        tfac equal 5.0/3.0     # Temperature factor for rotational degrees of freedom
+variable        mc_freq equal 100      # Frequency of MC moves
+variable        mc_moves equal 10      # Number of moves per cycle
+
+# -----------------------------------------------------------------------------
+# 2. Set up GCMC fixes for Na+ and Cl- ions
+# -----------------------------------------------------------------------------
+# Na+ ion MC moves: insertion, deletion, translation (no rotation for spherical ions)
+fix             mc_na na gcmc ${mc_freq} 0 ${mc_moves} 1 ${seed}1 ${T} ${mu_Na} ${mc_disp} region interior grouptype 1 na
+
+# Cl- ion MC moves: insertion, deletion, translation (no rotation for spherical ions)
+fix             mc_cl cl gcmc ${mc_freq} 0 ${mc_moves} 2 ${seed}2 ${T} ${mu_Cl} ${mc_disp} region interior grouptype 2 cl
+
+# -----------------------------------------------------------------------------
+# 3. Set up rigid body constraints for dipoles using rigid/small
+# -----------------------------------------------------------------------------
+# Use rigid/small algorithm to maintain rigidity in dipole molecules
+# This is compatible with GCMC moves
+fix             rigid_dip dipoles rigid/small molecule
+
+# -----------------------------------------------------------------------------
+# 4. Set up GCMC moves for dipole molecules
+# -----------------------------------------------------------------------------
+# Add GCMC for dipole molecules with rigid body constraint
+fix             mc_dip dipoles gcmc ${mc_freq} 0 ${mc_moves} 0 ${seed}3 ${T} ${mu_dip} ${mc_disp} mol dipole_mol region interior tfac_insert ${tfac} mcmoves 0.0 0.5 0.5

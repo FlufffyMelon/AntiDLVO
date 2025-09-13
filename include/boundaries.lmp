@@ -1,0 +1,36 @@
+# =============================================================================
+# BOUNDARIES AND WALLS CONFIGURATION
+# =============================================================================
+# This file defines the simulation boundaries and wall potentials:
+# - Wall regions
+# - Wall interaction parameters
+# - External electric field
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. Define wall regions
+# -----------------------------------------------------------------------------
+# Lower and upper wall regions with extra buffer space
+variable        wall_buffer equal 2.0  # Extra buffer to avoid overlaps
+region          lower_wall block 0.0 ${Lx} 0.0 ${Ly} -${wall_buffer} 0.1 units box
+region          upper_wall block 0.0 ${Lx} 0.0 ${Ly} ${H} $(v_H+v_wall_buffer) units box
+
+# -----------------------------------------------------------------------------
+# 2. Define wall interaction parameters
+# -----------------------------------------------------------------------------
+variable        wall_eps  equal 10.0     # Wall energy parameter - high value for hard walls
+variable        wall_cut  equal 2.5      # Wall cutoff distance
+
+# -----------------------------------------------------------------------------
+# 3. Apply wall potentials
+# -----------------------------------------------------------------------------
+# Lower wall using LJ93 potential
+fix             wallz_lo all wall/lj93 zlo 0.0 ${wall_eps} ${sigma_Na} ${wall_cut}
+
+# Upper wall using LJ93 potential
+fix             wallz_hi all wall/lj93 zhi ${H} ${wall_eps} ${sigma_Na} ${wall_cut}
+
+# -----------------------------------------------------------------------------
+# 4. Apply external electric field along z-axis
+# -----------------------------------------------------------------------------
+fix             efield all efield 0.0 0.0 ${ext_field}

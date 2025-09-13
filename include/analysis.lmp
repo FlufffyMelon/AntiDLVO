@@ -1,0 +1,125 @@
+# =============================================================================
+# ANALYSIS TOOLS CONFIGURATION
+# =============================================================================
+# This file sets up various analysis tools and output configurations:
+# - Group definitions for analysis
+# - Dipole moment calculations
+# - System property statistics
+# - Density profiles
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. Use pre-defined atom groups for analysis
+# -----------------------------------------------------------------------------
+# (Groups are defined in groups.lmp)
+
+# -----------------------------------------------------------------------------
+# 2. Count particles in each group
+# -----------------------------------------------------------------------------
+variable        count_na equal count(na)
+variable        count_cl equal count(cl)
+variable        count_dip equal count(dipole_pos)  # One positive end per dipole
+
+# -----------------------------------------------------------------------------
+# 3. Compute dipole moment manually
+# -----------------------------------------------------------------------------
+# First, compute atom positions and charges
+compute         charge all property/atom q
+compute         pos all property/atom x y z
+
+# Create atom variables for dipole moment components (q*r)
+variable        dipole_x atom "c_charge*c_pos[1]"
+variable        dipole_y atom "c_charge*c_pos[2]"
+variable        dipole_z atom "c_charge*c_pos[3]"
+
+# Sum up all components to get total dipole moment
+compute         ccharge_x all reduce sum v_dipole_x
+compute         ccharge_y all reduce sum v_dipole_y
+compute         ccharge_z all reduce sum v_dipole_z
+
+variable        total_dip_x equal c_ccharge_x
+variable        total_dip_y equal c_ccharge_y
+variable        total_dip_z equal c_ccharge_z
+variable        total_dip_mag equal sqrt(v_total_dip_x^2+v_total_dip_y^2+v_total_dip_z^2)
+
+# -----------------------------------------------------------------------------
+# 4. Compute basic thermodynamic properties
+# -----------------------------------------------------------------------------
+compute         t_all all temp
+compute         pe_all all pe
+compute         ke_all all ke
+compute         press all pressure t_all
+
+# System property variables
+variable        step equal step
+variable        vol  equal vol
+variable        natoms equal atoms
+variable        pot_eng equal pe
+variable        kin_eng equal ke
+variable        tot_eng equal pe+ke
+variable        temperature equal temp
+variable        density equal atoms/vol
+
+# -----------------------------------------------------------------------------
+# 5. Compute disjoin pressure
+# -----------------------------------------------------------------------------
+# Compute forces on the walls from all particles
+compute         f_lower all property/atom fz
+compute         f_upper all property/atom fz
+compute         lower_force all reduce sum c_f_lower
+compute         upper_force all reduce sum c_f_upper
+
+# Calculate disjoin pressure as the sum of forces divided by the wall area
+variable        wall_area equal ${Lx}*${Ly}
+variable        avg_disjoin_press equal (c_lower_force - c_upper_force)/${wall_area}
+
+# -----------------------------------------------------------------------------
+# 6. Set up density profile analysis
+# -----------------------------------------------------------------------------
+# Define bin width for z-axis profiles
+variable        zbin_width equal ${H}/50.0
+
+# Create chunks for density profile analysis
+compute         na_chunk na chunk/atom bin/1d z lower ${zbin_width}
+compute         cl_chunk cl chunk/atom bin/1d z lower ${zbin_width}
+compute         dip_p_chunk dipole_pos chunk/atom bin/1d z lower ${zbin_width}
+compute         dip_n_chunk dipole_neg chunk/atom bin/1d z lower ${zbin_width}
+
+# Calculate density profiles
+fix             na_density na ave/chunk 1000 1 1000 na_chunk density/number &
+                file ${outdir}/na_density_profile.dat
+fix             cl_density cl ave/chunk 1000 1 1000 cl_chunk density/number &
+                file ${outdir}/cl_density_profile.dat
+fix             dip_p_density dipole_pos ave/chunk 1000 1 1000 dip_p_chunk density/number &
+                file ${outdir}/dip_positive_density_profile.dat
+fix             dip_n_density dipole_neg ave/chunk 1000 1 1000 dip_n_chunk density/number &
+                file ${outdir}/dip_negative_density_profile.dat
+
+# -----------------------------------------------------------------------------
+# 7. Track GCMC acceptance rates
+# -----------------------------------------------------------------------------
+# Simple variables for GCMC statistics
+# Using safe formulas to track acceptance rates for all GCMC moves
+variable        na_insert_rate equal 0.0  # Na+ insertion rate
+variable        na_delete_rate equal 0.0  # Na+ deletion rate
+variable        na_trans_rate equal 0.0   # Na+ translation rate
+
+variable        cl_insert_rate equal 0.0  # Cl- insertion rate
+variable        cl_delete_rate equal 0.0  # Cl- deletion rate
+variable        cl_trans_rate equal 0.0   # Cl- translation rate
+
+variable        dip_insert_rate equal 0.0 # Dipole insertion rate
+variable        dip_delete_rate equal 0.0 # Dipole deletion rate
+variable        dip_trans_rate equal 0.0  # Dipole translation rate
+variable        dip_rot_rate equal 0.0    # Dipole rotation rate
+
+# -----------------------------------------------------------------------------
+# 8. Set up time-averaged statistics output
+# -----------------------------------------------------------------------------
+# Output comprehensive statistics to CSV file
+fix             stats all ave/time ${stats_freq} 1 ${stats_freq} &
+                v_step v_temperature c_pe_all c_ke_all v_tot_eng &
+                v_avg_disjoin_press v_vol v_natoms v_count_na v_count_cl v_count_dip &
+                v_total_dip_x v_total_dip_y v_total_dip_z v_total_dip_mag &
+                file ${outdir}/stats_${tag}.csv &
+                ave one title1 "step temp pe ke etotal disjoin_press vol natoms na_count cl_count dip_count dipole_x dipole_y dipole_z dipole_mag"

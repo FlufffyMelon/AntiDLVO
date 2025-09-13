@@ -1,0 +1,144 @@
+# Monte Carlo simulation of LJ fluid in a slit pore with disjoin pressure calculation
+# External wall potential: psi(z) = 2pi [2/(5*z^10) - 1/z^4 - 1/(3*delta_z*(z+0.61*delta_z)^3)]
+
+# ---------------------------
+# Parameters
+# ---------------------------
+variable        N           index 200           # number of atoms
+variable        Lx          index 15.0          # pore length (sigma)
+variable        Ly          index 15.0          # pore width (sigma)
+variable        H           index 4.0           # pore height (sigma)
+variable        T           index 1.2           # temperature (LJ units)
+variable        mu          index -2.477        # chemical potential (LJ unit)
+variable        nsteps      index 100000        # total MC steps (LAMMPS timesteps)
+variable        dump_freq   index 100           # XYZ dump frequency (steps)
+variable        stats_freq  index 10            # frequency for writing stats table
+variable        mc_every    index 1             # apply fix gcmc every this many steps
+variable        X           index 3             # average number of GCMC exchanges to attempt every N steps
+variable        M           index 7             # average number of MC moves to attempt every N steps
+variable        seed        index 12345         # RNG seed
+variable        max_disp    index 0.05          # max translation displacement (sigma)
+variable        tag         index lj_pore       # tag for outputs
+variable        outdir      index ./results     # output directory
+
+# Wall potential parameters
+variable        pi          equal 3.14159265359
+variable        delta_z     equal 1.0/sqrt(2.0) # delta_z parameter
+
+# Equal-style wrappers for thermo printing
+variable        rho_eq      equal v_N/(v_Lx*v_Ly*v_H)
+variable        T_eq        equal v_T
+
+# ---------------------------
+# Initialization
+# ---------------------------
+units           lj
+dimension       3
+boundary        p p f       # periodic in x,y, fixed in z
+atom_style      atomic
+
+# Optional: write a distinct log per run/tag
+log             ${outdir}/log_${tag}.lammps
+
+# ---------------------------
+# System build
+# ---------------------------
+# Define full simulation box
+region          box block 0 ${Lx} 0 ${Ly} 0 ${H}
+create_box      1 box
+
+# Define buffer distance from walls to prevent potential divergence
+variable        buffer      equal 0.1  # buffer distance from walls (sigma)
+
+# Create a smaller region for particle placement to avoid wall contact
+region          interior block 0 ${Lx} 0 ${Ly} ${buffer} $(v_H-v_buffer)
+
+# Calculate required density in the interior region to achieve target N
+variable        interior_vol equal (v_Lx*v_Ly*(v_H-2*v_buffer))
+variable        interior_rho equal (v_N/v_interior_vol)
+
+# Place particles in the interior region only
+# lattice         sc ${interior_rho}
+create_atoms    1 region interior
+mass            1 1.0
+group           atoms region box
+
+# Delete extra sites to get exactly N atoms
+variable        nall equal atoms
+variable        ndel equal v_nall - v_N
+if "${ndel} > 0" then "delete_atoms random count ${ndel} no atoms box ${seed}"
+
+# ---------------------------
+# Interactions
+# ---------------------------
+pair_style      lj/cut 2.5
+pair_modify     tail no     # no tail correction with walls
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    delay 0 every 1 check yes
+
+# ---------------------------
+# Define wall potentials and forces for lower and upper walls
+# ---------------------------
+# Lower wall potential (z)
+variable        lower_psi atom "2*v_pi*(2/(5*z^10) - 1/z^4 - 1/(3*v_delta_z*(z+0.61*v_delta_z)^3))"
+# Force is negative derivative of potential with respect to z (analytical)
+variable        lower_force atom "-2*v_pi*(-4/z^11 + 4/z^5 + 1/(v_delta_z*(z+0.61*v_delta_z)^4))"
+
+# Upper wall potential (H-z)
+variable        upper_psi atom "2*v_pi*(2/(5*(v_H-z)^10) - 1/(v_H-z)^4 - 1/(3*v_delta_z*((v_H-z)+0.61*v_delta_z)^3))"
+# Force is negative derivative of potential with respect to (H-z), but need to multiply by -1 due to direction
+variable        upper_force atom "2*v_pi*(-4/(v_H-z)^11 + 4/(v_H-z)^5 + 1/(v_delta_z*(v_H-z+0.61*v_delta_z)^4))"
+
+
+# Apply external force
+fix             lower_wall all addforce 0.0 0.0 v_lower_force energy v_lower_psi
+fix_modify      lower_wall energy yes
+fix             upper_wall all addforce 0.0 0.0 v_upper_force energy v_upper_psi
+fix_modify      upper_wall energy yes
+
+# ---------------------------
+# Compute disjoin pressure
+# ---------------------------
+# Compute disjoin pressure = force along z axis * -1
+variable        disjoin_press atom "(v_lower_force - v_upper_force)/2"
+compute         disjoin_pressure all reduce sum v_disjoin_press
+variable        avg_disjoin_press equal c_disjoin_pressure / (v_Lx * v_Ly)
+
+# ---------------------------
+# Thermo/pressure bookkeeping
+# ---------------------------
+# Assign velocities once so thermo temperature/pressure have reasonable values
+velocity        all create ${T} ${seed} mom yes rot yes dist gaussian
+
+# ---------------------------
+# Monte Carlo (canonical displacement-only)
+# ---------------------------
+# Displacement-only canonical MC with the external potential
+# Use region to constrain moves within the simulation box
+fix             mc all gcmc ${mc_every} ${X} ${M} 1 ${seed} ${T} ${mu} ${max_disp} region box mcmoves 1.0 0.0 0.0 full_energy
+
+# ---------------------------
+# Output
+# ---------------------------
+thermo          ${dump_freq}
+thermo_style    custom step atoms v_rho_eq v_T_eq pe v_avg_disjoin_press vol
+
+# dump            dxyz all xyz ${dump_freq} ${outdir}/${tag}.xyz
+dump            dxyz all atom ${dump_freq} ${outdir}/${tag}.atom
+dump_modify     dxyz sort id
+
+# ---------------------------
+# Analysis-friendly stats output (CSV-like)
+# ---------------------------
+compute         t_all all temp
+compute         pe_all all pe
+variable        step equal step
+variable        vol  equal vol
+variable        natoms equal atoms
+fix             stats all ave/time ${stats_freq} 1 ${stats_freq} c_t_all c_pe_all v_avg_disjoin_press v_vol v_natoms file ${outdir}/stats_${tag}.csv ave one title1 "step temp pe disjoin_pressure vol natoms"
+
+# ---------------------------
+# Run
+# ---------------------------
+run             ${nsteps}

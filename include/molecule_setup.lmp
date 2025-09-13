@@ -1,0 +1,28 @@
+# =============================================================================
+# MOLECULE CONFIGURATION
+# =============================================================================
+# This file loads all molecule templates for the simulation:
+# - Ion templates
+# - Dipole template with virtual sites
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. Load ion templates
+# -----------------------------------------------------------------------------
+# Na+ ion template (atom type 1)
+molecule        na_mol molecules/na_ion.mol
+
+# Cl- ion template (atom type 2)
+molecule        cl_mol molecules/cl_ion.mol
+
+# -----------------------------------------------------------------------------
+# 2. Generate dipole template with virtual sites
+# -----------------------------------------------------------------------------
+# Calculate spacing between atoms in dipole
+variable        spacing equal ${dipole_length}/(v_n_virtual+1)
+
+# Generate molecule template using the build script
+shell           molecules/build_dipole.py ${dipole_length} ${n_virtual}
+
+# Load the generated molecule template
+molecule        dipole_mol molecules/build_dipole.txt

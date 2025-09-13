@@ -1,0 +1,57 @@
+# =============================================================================
+# SYSTEM INITIALIZATION
+# =============================================================================
+# This file handles the initial system setup and minimization:
+# - Random displacements to avoid exact overlaps
+# - Energy minimization to resolve bad contacts
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. Initial energy computation with safer settings
+# -----------------------------------------------------------------------------
+# Add a temporary NVE fix during initialization to prevent warnings
+# fix             temp_nve all nve/noforce
+
+# First compute the initial energy with diagnostics
+# thermo          1
+# thermo_style    custom step atoms pe ke temp press vol
+# run             0
+
+# Remove the temporary fix
+# unfix           temp_nve
+
+# -----------------------------------------------------------------------------
+# 2. Perform careful minimization
+# -----------------------------------------------------------------------------
+# Fix to prevent system drift
+# fix             fe all momentum 100 linear 1 1 1 angular
+
+# Add small random displacements to avoid exact overlaps
+# displace_atoms  all random 0.01 0.01 0.01 ${seed} units box
+
+# First, very gentle minimization to handle bad overlaps
+# minimize        1.0e-3 1.0e-4 1000 10000
+
+# Then, more thorough minimization
+# minimize        1.0e-4 1.0e-6 5000 50000
+
+# Unfix the momentum fix
+# unfix           fe
+
+# -----------------------------------------------------------------------------
+# 3. Apply additional safety check
+# -----------------------------------------------------------------------------
+# Delete any atoms that may have strayed outside the box
+# region          safety block 0 ${Lx} 0 ${Ly} 0 ${H} units box
+# group           inside region safety
+# group           outside subtract all inside
+# delete_atoms    group outside
+
+# Add temporary NVE fix for final energy calculation
+# fix             temp_nve2 all nve/noforce
+
+# Final energy calculation to verify system is stable
+# run             0
+
+# Remove temporary fix
+# unfix           temp_nve2

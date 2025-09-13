@@ -1,0 +1,24 @@
+# Single Cl ion molecule template for LAMMPS
+# Type 2 - Cl- ion
+
+1 atoms
+0 bonds
+0 angles
+0 dihedrals
+0 impropers
+
+Coords
+
+1 0 0 0
+
+Types
+
+1 2
+
+Charges
+
+1 -1.0
+
+Molecules
+
+1 1

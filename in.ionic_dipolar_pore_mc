@@ -1,0 +1,244 @@
+# =============================================================================
+# IONIC DIPOLAR PORE MONTE CARLO SIMULATION
+# =============================================================================
+#
+# This LAMMPS script simulates a nanopore system with:
+# - Na+ and Cl- ions
+# - Dipole molecules (with virtual sites)
+# - Hard walls
+# - External electric field
+# - Implicit water (via dielectric constant)
+#
+# NVT ensemble - NVE integration with Monte Carlo moves
+#
+# Author: AntiDLVO (2025)
+# =============================================================================
+
+# =============================================================================
+# SIMULATION PARAMETERS
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. System parameters
+# -----------------------------------------------------------------------------
+variable        N_Na         index 100       # number of Na+ ions
+variable        N_Cl         index 100       # number of Cl- ions
+variable        N_dipoles    index 50        # number of dipole molecules
+variable        Lx           index 200.0      # pore length (Angstrom)
+variable        Ly           index 200.0      # pore width (Angstrom)
+variable        H            index 50.0      # pore height (Angstrom)
+variable        T            index 300       # temperature (K)
+variable        nsteps       index 200      # total MC steps
+variable        seed         index 12345     # RNG seed
+
+# -----------------------------------------------------------------------------
+# 2. Dipole parameters
+# -----------------------------------------------------------------------------
+variable        dipole_length index 4.0      # dipole length (Angstrom)
+variable        n_virtual     index 2        # number of virtual sites in dipole
+variable        q_dipole      index 1.0      # charge magnitude for dipole ends (e)
+
+# -----------------------------------------------------------------------------
+# 3. Ion parameters
+# -----------------------------------------------------------------------------
+variable        Na_charge    index 1.0       # charge of Na+ (e)
+variable        Cl_charge    index -1.0      # charge of Cl- (e)
+variable        Na_radius    index 1.0       # hard sphere radius for Na+ (Angstrom)
+variable        Cl_radius    index 1.8       # hard sphere radius for Cl- (Angstrom)
+variable        Ip_radius    index 1.0       # hard sphere radius for dipole positive end (Angstrom)
+variable        Im_radius    index 1.0       # hard sphere radius for dipole negative end (Angstrom)
+variable        G_radius     index 0.8       # hard sphere radius for virtual sites (Angstrom)
+
+# -----------------------------------------------------------------------------
+# 4. External field parameters
+# -----------------------------------------------------------------------------
+variable        ext_field    index 0.006     # external electric field strength (V/Angstrom)
+variable        dielectric   index 78.5      # dielectric constant of water
+
+# -----------------------------------------------------------------------------
+# 5. Output parameters
+# -----------------------------------------------------------------------------
+variable        dump_freq    index 10        # trajectory dump frequency (steps)
+variable        stats_freq   index 10        # statistics output frequency (steps)
+variable        tag          index ionic_dipolar # tag for output files
+variable        outdir       index ./results      # output directory
+
+# -----------------------------------------------------------------------------
+# 6. Monte Carlo parameters
+# -----------------------------------------------------------------------------
+variable        max_disp     index 0.05      # max translation displacement (Angstrom)
+variable        max_rot      index 0.1       # max rotation displacement (radians)
+variable        mc_every     index 1         # MC frequency (steps)
+
+# =============================================================================
+# INITIALIZATION
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. Basic settings
+# -----------------------------------------------------------------------------
+units           real                      # real units (Å, kcal/mol, g/mol)
+dimension       3                         # 3D simulation
+boundary        p p f                     # periodic in x,y, fixed in z
+atom_style      full                      # use full style to support charges and molecular topology
+atom_modify     map array                 # efficient atom mapping
+
+# Define bond and angle styles for SHAKE constraints
+bond_style      harmonic
+angle_style     harmonic
+
+# -----------------------------------------------------------------------------
+# 2. Create output directory
+# -----------------------------------------------------------------------------
+shell           mkdir -p ${outdir}
+log             ${outdir}/log_${tag}.lammps
+
+# =============================================================================
+# SYSTEM CONSTRUCTION
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. Create simulation box
+# -----------------------------------------------------------------------------
+# Define full simulation box
+region          box block 0 ${Lx} 0 ${Ly} 0 ${H} units box
+
+# Create box with 5 atom types, 1 bond type, 1 angle type:
+# Type 1: Na+, Type 2: Cl-, Type 3: Ip, Type 4: Im, Type 5: G (virtual)
+# We need 1 bond type and 1 angle type for the dipole molecules
+create_box      5 box bond/types 1 angle/types 1 extra/bond/per/atom 2 extra/angle/per/atom 1 extra/special/per/atom 4
+
+# -----------------------------------------------------------------------------
+# 2. Load molecule templates (after box is created)
+# -----------------------------------------------------------------------------
+include         include/molecule_setup.lmp
+
+# -----------------------------------------------------------------------------
+# 2. Calculate safe placement region
+# -----------------------------------------------------------------------------
+# Find the maximum radius for buffer zone to avoid wall contact
+variable        buffer_Na   equal ${Na_radius}
+variable        buffer_Cl   equal ${Cl_radius}
+variable        buffer_Ip   equal ${Ip_radius}
+variable        buffer_Im   equal ${Im_radius}
+
+# Find maximum buffer size (no max function, so use conditionals)
+variable        buffer_max  equal ${buffer_Na}
+if "${buffer_Cl} > ${buffer_max}" then "variable buffer_max equal ${buffer_Cl}"
+if "${buffer_Ip} > ${buffer_max}" then "variable buffer_max equal ${buffer_Ip}"
+if "${buffer_Im} > ${buffer_max}" then "variable buffer_max equal ${buffer_Im}"
+
+# Add reasonable safety margin to buffer (much smaller than before)
+variable        safety_margin equal 1.0
+variable        buffer_safe equal ${buffer_max} + ${safety_margin}
+
+# Create interior region for particle placement - keeping away from walls but using most of box
+region          interior block 0 ${Lx} 0 ${Ly} ${buffer_safe} $(v_H-v_buffer_safe) units box
+
+# -----------------------------------------------------------------------------
+# 3. Add particles
+# -----------------------------------------------------------------------------
+# Create different seeds for each particle type to avoid overlaps
+variable        seed_Na equal ${seed}
+variable        seed_Cl equal ${seed} + 10000
+variable        seed_dip equal ${seed} + 20000
+
+# Add Na+ ions with first seed
+create_atoms    1 random ${N_Na} ${seed_Na} interior
+
+# Add Cl- ions with second seed
+create_atoms    2 random ${N_Cl} ${seed_Cl} interior
+
+# Add dipole molecules with third seed
+create_atoms    0 random ${N_dipoles} ${seed_dip} interior mol dipole_mol 1
+
+# -----------------------------------------------------------------------------
+# 4. Set masses
+# -----------------------------------------------------------------------------
+mass            1 22.99      # Na+ mass (g/mol)
+mass            2 35.45      # Cl- mass (g/mol)
+mass            3 1.0        # Ip (positive end of dipole)
+mass            4 1.0        # Im (negative end of dipole)
+mass            5 1.0        # G (virtual site)
+
+# -----------------------------------------------------------------------------
+# 5. Set initial charges (will be scaled later)
+# -----------------------------------------------------------------------------
+set             type 1 charge ${Na_charge}
+set             type 2 charge ${Cl_charge}
+set             type 3 charge ${q_dipole}
+set             type 4 charge -${q_dipole}
+set             type 5 charge 0.0
+
+# -----------------------------------------------------------------------------
+# 6. Define groups
+# -----------------------------------------------------------------------------
+include         include/groups.lmp
+
+# =============================================================================
+# FORCE FIELD SETUP
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. Set up interactions
+# -----------------------------------------------------------------------------
+include         include/interactions.lmp
+
+# -----------------------------------------------------------------------------
+# 2. Set up boundary conditions and walls
+# -----------------------------------------------------------------------------
+include         include/boundaries.lmp
+
+# =============================================================================
+# SIMULATION SETUP
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. Initialize system and minimize energy
+# -----------------------------------------------------------------------------
+# include         include/system_init.lmp
+
+# -----------------------------------------------------------------------------
+# 2. Set up dynamics (NVT thermostat)
+# -----------------------------------------------------------------------------
+include         include/dynamics.lmp
+
+# -----------------------------------------------------------------------------
+# 3. Set up Monte Carlo moves
+# -----------------------------------------------------------------------------
+include         include/mc_moves.lmp
+
+# -----------------------------------------------------------------------------
+# 4. Set up analysis tools
+# -----------------------------------------------------------------------------
+include         include/analysis.lmp
+
+# -----------------------------------------------------------------------------
+# 5. Set up output
+# -----------------------------------------------------------------------------
+# Configure thermo output
+thermo          ${dump_freq}
+thermo_style    custom step atoms pe ke temp press vol v_avg_disjoin_press
+
+# Configure trajectory output
+dump            dxyz all custom ${dump_freq} ${outdir}/${tag}.lammpstrj id type x y z q
+dump_modify     dxyz sort id
+
+# =============================================================================
+# RUN PURE GRAND CANONICAL MONTE CARLO SIMULATION
+# =============================================================================
+# 1. No time integration - pure MC simulation
+# The fix gcmc commands are defined in mc_moves.lmp
+# They handle all MC moves: insertion, deletion, translation, rotation
+# Chemical potentials are also defined in mc_moves.lmp
+
+# 2. Set up thermo output to track MC statistics
+thermo_style    custom step atoms pe ke temp press vol &
+                v_count_na v_count_cl v_count_dip
+
+# 3. Set up a minimal time integrator to support the GCMC moves
+# This is needed for LAMMPS to properly process atom updates and for SHAKE
+# fix             nve_all all nve/limit 0.1
+
+# 4. Run the simulation with both MC moves and minimal dynamics
+run             ${nsteps}

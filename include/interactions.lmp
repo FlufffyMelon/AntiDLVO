@@ -1,0 +1,89 @@
+# =============================================================================
+# INTERACTIONS CONFIGURATION
+# =============================================================================
+# This file defines all pair-wise interactions in the system including:
+# - Hard sphere repulsion via LJ potential
+# - Coulombic interactions with dielectric constant
+# - Charge scaling to account for dielectric medium
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. Define LJ parameters for hard sphere interactions
+# -----------------------------------------------------------------------------
+# WCA potential parameters (based on hard sphere radii)
+# We calculate sigma from the radii: sigma = 2^(1/6) * r_hard_sphere
+variable        wca_shift equal 2^(1/6)
+variable        sigma_Na equal ${Na_radius}*${wca_shift}
+variable        sigma_Cl equal ${Cl_radius}*${wca_shift}
+variable        sigma_Ip equal ${Ip_radius}*${wca_shift}
+variable        sigma_Im equal ${Im_radius}*${wca_shift}
+variable        sigma_G  equal ${G_radius}*${wca_shift}
+
+# Energy parameter (same for all interactions)
+variable        epsilon equal 1.0
+
+# -----------------------------------------------------------------------------
+# 2. Set pair style for non-bonded interactions
+# -----------------------------------------------------------------------------
+# Simple pair style that combines LJ and Coulomb interactions
+pair_style      lj/cut/coul/cut 2.5 10.0
+
+# -----------------------------------------------------------------------------
+# 3. Define all pairwise LJ interactions
+# -----------------------------------------------------------------------------
+# Format: pair_coeff atom_type1 atom_type2 epsilon sigma
+# Types: 1=Na+, 2=Cl-, 3=Ip (dipole+), 4=Im (dipole-), 5=G (virtual site)
+
+# Na+ interactions
+pair_coeff      1 1 ${epsilon} ${sigma_Na}
+pair_coeff      1 2 ${epsilon} $(0.5*(v_sigma_Na+v_sigma_Cl))
+pair_coeff      1 3 ${epsilon} $(0.5*(v_sigma_Na+v_sigma_Ip))
+pair_coeff      1 4 ${epsilon} $(0.5*(v_sigma_Na+v_sigma_Im))
+pair_coeff      1 5 ${epsilon} $(0.5*(v_sigma_Na+v_sigma_G))
+
+# Cl- interactions
+pair_coeff      2 2 ${epsilon} ${sigma_Cl}
+pair_coeff      2 3 ${epsilon} $(0.5*(v_sigma_Cl+v_sigma_Ip))
+pair_coeff      2 4 ${epsilon} $(0.5*(v_sigma_Cl+v_sigma_Im))
+pair_coeff      2 5 ${epsilon} $(0.5*(v_sigma_Cl+v_sigma_G))
+
+# Dipole positive end interactions
+pair_coeff      3 3 ${epsilon} ${sigma_Ip}
+pair_coeff      3 4 ${epsilon} $(0.5*(v_sigma_Ip+v_sigma_Im))
+pair_coeff      3 5 ${epsilon} $(0.5*(v_sigma_Ip+v_sigma_G))
+
+# Dipole negative end interactions
+pair_coeff      4 4 ${epsilon} ${sigma_Im}
+pair_coeff      4 5 ${epsilon} $(0.5*(v_sigma_Im+v_sigma_G))
+
+# Virtual site interactions
+pair_coeff      5 5 ${epsilon} ${sigma_G}
+
+# -----------------------------------------------------------------------------
+# 4. Apply dielectric constant by scaling charges
+# -----------------------------------------------------------------------------
+# Scale charges to account for dielectric medium
+variable        scaled_q_Na equal ${Na_charge}*sqrt(1/${dielectric})
+variable        scaled_q_Cl equal ${Cl_charge}*sqrt(1/${dielectric})
+variable        scaled_q_dip equal ${q_dipole}*sqrt(1/${dielectric})
+
+# Reset all charges with scaled values
+set             type 1 charge ${scaled_q_Na}
+set             type 2 charge ${scaled_q_Cl}
+set             type 3 charge ${scaled_q_dip}
+set             type 4 charge -${scaled_q_dip}
+# Virtual sites remain uncharged
+set             type 5 charge 0.0
+
+# -----------------------------------------------------------------------------
+# 5. Define bond and angle coefficients for SHAKE constraints
+# -----------------------------------------------------------------------------
+# Zero force constants for SHAKE - will be maintained by constraints instead of forces
+bond_coeff      1 0.0 ${dipole_length}   # Bonds in dipole - maintained by SHAKE
+angle_coeff     1 0.0 180.0              # Angles in dipole - maintained by SHAKE
+
+# -----------------------------------------------------------------------------
+# 6. Set neighbor list parameters
+# -----------------------------------------------------------------------------
+neighbor        0.5 bin
+neigh_modify    delay 0 every 1 check yes

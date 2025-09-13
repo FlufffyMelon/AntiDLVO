@@ -1,0 +1,23 @@
+# =============================================================================
+# GROUP DEFINITIONS
+# =============================================================================
+# This file defines atom groups for the simulation:
+# - Ions groups
+# - Dipole component groups
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. Define ion groups
+# -----------------------------------------------------------------------------
+group           na type 1                  # Na+ ions
+group           cl type 2                  # Cl- ions
+group           ions union na cl           # All ions
+
+# -----------------------------------------------------------------------------
+# 2. Define dipole component groups
+# -----------------------------------------------------------------------------
+group           dipole_pos type 3          # Dipole positive ends
+group           dipole_neg type 4          # Dipole negative ends
+group           virtual type 5             # Dipole virtual sites
+group           dipole_ends union dipole_pos dipole_neg  # All dipole ends
+group           dipoles type 3 4 5         # All dipole atoms
