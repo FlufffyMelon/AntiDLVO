@@ -6,7 +6,7 @@ and cached data for Ewald summation.
 
 import numpy as np
 from typing import Optional
-from units import Units
+from .units import Units
 
 
 class EwaldHandler:
@@ -83,6 +83,8 @@ class EwaldHandler:
             # Fallback for non-LJ units
             kc = 138.935456  # kJ nm / mol
             self.lB_star = kc / max(self.dielectric, 1e-12)
+
+        return self.lB_star
 
     def initialize_k_vectors(self, box: np.ndarray) -> None:
         """
@@ -203,6 +205,8 @@ class EwaldHandler:
         # Scale by reduced Bjerrum length for LJ units
         if self.lB_star is not None:
             energy *= self.lB_star
+        else:
+            raise ValueError("Reduced Bjerrum length is not set")
 
         return energy
 
@@ -230,6 +234,8 @@ class EwaldHandler:
         # Scale by reduced Bjerrum length for LJ units
         if self.lB_star is not None:
             energy *= self.lB_star
+        else:
+            raise ValueError("Reduced Bjerrum length is not set")
 
         return energy
 
@@ -257,6 +263,8 @@ class EwaldHandler:
         # Scale by reduced Bjerrum length for LJ units
         if self.lB_star is not None:
             energy *= self.lB_star
+        else:
+            raise ValueError("Reduced Bjerrum length is not set")
 
         return energy
 
@@ -309,6 +317,8 @@ class EwaldHandler:
 
         if self.lB_star is not None:
             delta_energy *= self.lB_star
+        else:
+            raise ValueError("Reduced Bjerrum length is not set")
 
         return delta_energy, delta_S_c, delta_S_s
 
@@ -323,6 +333,8 @@ class EwaldHandler:
 
         if self.lB_star is not None:
             delta_self_energy *= self.lB_star
+        else:
+            raise ValueError("Reduced Bjerrum length is not set")
 
         return delta_self_energy
 
@@ -373,6 +385,8 @@ class EwaldHandler:
 
         if self.lB_star is not None:
             delta_dipole_energy *= self.lB_star
+        else:
+            raise ValueError("Reduced Bjerrum length is not set")
 
         return delta_dipole_energy
 

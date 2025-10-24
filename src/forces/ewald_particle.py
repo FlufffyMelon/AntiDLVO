@@ -1,6 +1,6 @@
 import numpy as np
 from typing import Tuple
-from units import Units
+from ..units import Units
 from .basic_force import Force
 from scipy.special import erfc
 
@@ -27,6 +27,14 @@ class EwaldReal(Force):
         if system is None or not system.ewald_handler:
             N = r_ij.shape[0]
             return np.zeros(N), np.zeros((N, 3))
+
+        # r_ij = np.where(
+        #     system.pbc[np.newaxis, :],
+        #     r_ij
+        #     - system.box[np.newaxis, :]
+        #     * np.round(r_ij * system.inv_box[np.newaxis, :]),
+        #     r_ij,
+        # )
 
         # Get Ewald parameters from handler
         alpha = system.ewald_handler.alpha

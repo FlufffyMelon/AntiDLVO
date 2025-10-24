@@ -1,0 +1,104 @@
+# Test 6: NaCl crystal Madelung constant validation
+experiment:
+  name: "test_6_nacl_crystal"
+  results_dir: "results"
+  description: "NaCl crystal energy vs Madelung constant - Ewald validation"
+
+units:
+  system: "standard"
+
+simulation:
+  ensemble: "NVT"
+  temperature: 298.0  # K
+
+system:
+  initial_capacity: 1000  # Large capacity for crystal
+  box:
+    - 20   # Will be adjusted based on crystal size
+    - 20
+    - 20
+  pbc: [true, true, true]
+
+ewald:
+  # =============================================================================
+  # GROUP 1: STANDARD EWALD PARAMETERS (Original approach)
+  # =============================================================================
+  # Desired accuracy for Ewald summation
+  eps: ${eval:"1e-6"}
+
+  # Real-space cutoff: use 1/2 of smallest box dimension
+  real_cut: ${eval:"min(${system.box[0]}, ${system.box[1]}, ${system.box[2]}) / 2.0"}
+
+  # Alpha parameter: calculated using standard formula
+  alpha: ${eval:"sqrt(-log(${ewald.eps})) / ${ewald.real_cut}"}
+
+  # K-space cutoff: calculated based on alpha and desired accuracy
+  n_c: ${eval:"ceil(2 * sqrt(${ewald.alpha} * (-log(${ewald.eps}))) * min(${system.box[0]}, ${system.box[1]}, ${system.box[2]}) / (2 * pi))"}
+
+  # =============================================================================
+  # GROUP 2: MANUAL EWALD PARAMETERS (Fixed values for testing)
+  # =============================================================================
+  # alpha: 6.0
+  # real_cut: 1.0
+  # n_c: 1
+
+  # =============================================================================
+  # GROUP 3: OPTIMAL EWALD PARAMETERS (Lambert W theoretical approach)
+  # =============================================================================
+  # Use Lambert W function for optimal parameter calculation
+  # Based on theoretical optimization equations
+  use_optimal_params: true
+
+  # Optimal parameters will be calculated using:
+  # alpha = W(Q * kc / eps * (r_cut / (2*V))^(1/2)) / r_cut^2
+  # n_c = sqrt(3 * alpha) * W(4/(3*V) * (Q^2 * kc^2 / (pi * alpha^(1/2) * eps^2))^(2/3))^(1/2)
+  # where:
+  #   Q = sum of squared charges
+  #   kc = 138.93546 kJ⋅nm/mol (Coulomb constant)
+  #   V = system volume
+  #   eps = desired accuracy
+  #   r_cut = real-space cutoff (typically L/4)
+
+  # Parameters for optimal calculation
+  optimal_eps: ${eval:"1e-2"}  # Accuracy for optimal parameter calculation
+  optimal_real_cut_ratio: 0.25  # real_cut = optimal_real_cut_ratio * min(box_dimensions)
+
+  # Fallback to standard method if Lambert W fails
+  fallback_to_standard: true
+
+  dielectric: 1.0
+  z_scale_factor: 1.0
+  dipole_correction: false
+
+types:
+  - Particle:
+      type: "Na"
+      mass: 39.0983  # amu
+      charge: 1.0    # e
+      count: 0       # Will be set dynamically
+  - Particle:
+      type: "Cl"
+      mass: 35.453   # amu
+      charge: -1.0   # e
+      count: 0       # Will be set dynamically
+
+pairs:
+  - types: [Na, Na]
+    forces:
+      - kind: ewald
+  - types: [Cl, Cl]
+    forces:
+      - kind: ewald
+  - types: [Na, Cl]
+    forces:
+      - kind: ewald
+
+# Test parameters
+test_params:
+  # lattice_sizes: [2, 3, 4, 5, 6, 7, 8]  # Number of unit cells in each dimension
+  lattice_sizes: [5]  # Number of unit cells in each dimension
+  lattice_constant: 0.564  # nm (5.64 Å)
+  madelung_constant: 1.74756  # Theoretical value for NaCl
+  # Theoretical energy per ion pair: E = -M * e² / (4πε₀ * a) = -M * lB_star / a
+
+debug: false

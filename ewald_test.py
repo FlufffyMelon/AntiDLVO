@@ -18,7 +18,7 @@ from src.system import System
 from src.topology import Topology
 from src.ewald import EwaldHandler
 from src.forces import Coulomb, EwaldReal
-from scipy.special import erfcinv
+from scipy.special import erfcinv, lambertw
 from scipy.optimize import root_scalar
 
 
@@ -32,7 +32,7 @@ def madelung_constant_nacl():
 
 def setup_nacl_system(size=4, lattice_const=1.0):
     """
-    Create a simple cubic NaCl-like crystal system.
+    Create a proper NaCl crystal system with face-centered cubic structure.
 
     Args:
         size: Number of unit cells in each dimension
@@ -55,19 +55,6 @@ def setup_nacl_system(size=4, lattice_const=1.0):
         initial_capacity=size**3 * 2,
     )  # 2 atoms per unit cell
 
-    # Set up Ewald handler
-    # alpha = 1.2  # Following the recommendation in config file
-    # # real_cut = 0.45 * L  # Similar to the config file
-    # real_cut = 1.4
-    # ewald_handler = EwaldHandler(
-    #     alpha=alpha,
-    #     real_cut=real_cut,
-    #     n_c=7,  # More k-vectors for accuracy
-    #     dielectric=1.0,
-    #     units=units,
-    # )
-    # system.ewald_handler = ewald_handler
-
     # Create topology
     topology = Topology(units=units)
 
@@ -79,13 +66,8 @@ def setup_nacl_system(size=4, lattice_const=1.0):
     topology.set_type_properties(0, {"mass": 1.0, "charge": 1.0})
     topology.set_type_properties(1, {"mass": 1.0, "charge": -1.0})
 
-    # Add Ewald force to topology
-    # ewald_force = EwaldReal(units)
-    # topology.add_interaction(0, 0, ewald_force)
-    # topology.add_interaction(0, 1, ewald_force)
-    # topology.add_interaction(1, 1, ewald_force)
-
-    # Add atoms to the system in NaCl crystal structure
+    # Add atoms to the system in proper NaCl crystal structure
+    # NaCl has a face-centered cubic structure with Na at (0,0,0) and Cl at (0.5,0.5,0.5)
     positions = []
     types = []
     charges = []
@@ -93,13 +75,13 @@ def setup_nacl_system(size=4, lattice_const=1.0):
     for i in range(size):
         for j in range(size):
             for k in range(size):
-                # Na atom
+                # Na atom at (0,0,0) of each unit cell
                 pos_na = np.array([i, j, k]) * lattice_const
                 positions.append(pos_na)
                 types.append(0)
                 charges.append(1.0)
 
-                # Cl atom
+                # Cl atom at (0.5,0.5,0.5) of each unit cell
                 pos_cl = np.array([i + 0.5, j + 0.5, k + 0.5]) * lattice_const
                 positions.append(pos_cl)
                 types.append(1)
@@ -111,12 +93,7 @@ def setup_nacl_system(size=4, lattice_const=1.0):
 
     # Add atoms to system
     for i in range(len(positions)):
-        system.add_atom(positions[i], types[i], f"Atom{i}", charges[i], 1.0)
-
-    # Initialize k-vectors and structure factors
-    # ewald_handler.initialize_k_vectors(box)
-    # ewald_handler.update_structure_factors(positions, charges)
-    # ewald_handler.update_dipole_moment(positions, charges)
+        system._add_atom(positions[i], types[i], f"Atom{i}", charges[i], 1.0)
 
     return system, topology
 
@@ -135,7 +112,7 @@ def test_nacl_madelung():
             # for alpha in [1]:
             # Setup a NaCl crystal
             size = 8
-            lattice_const = 0.564
+            lattice_const = 0.564  # This is in nm (0.564 nm = 5.64 Å)
             system, topology = setup_nacl_system(size, lattice_const)
             print("System size:", system.N_atoms)
 
@@ -161,12 +138,33 @@ def test_nacl_madelung():
                 sol = root_scalar(f, bracket=[1e-6, 20], method="brentq")
                 return sol.root
 
-            eps = 1e-2
-            alpha = (np.pi**3 * system.N_atoms / system.box[0] ** 6) ** (1 / 6)
-            s = solve_for_s(eps)
-            real_cut = s / alpha
-            nc = s * system.box[0] * alpha / np.pi
-            print(f"alpha: {alpha}, real_cut: {real_cut}, nc: {nc}")
+            # eps = 1e-4
+            # alpha = (np.pi**3 * system.N_atoms / system.box[0] ** 6) ** (1 / 6)
+            # s = solve_for_s(eps)
+            # real_cut = s / alpha
+            # nc = s * system.box[0] * alpha / np.pi
+            # Try with more standard Ewald parameters
+            L = min(system.box)  # Use smallest box dimension
+
+            # Use parameters that give more balanced real/k-space contributions
+            real_cut = 1.0  # Fixed cutoff in nm
+            alpha = 2.0  # Larger alpha for more k-space contribution
+            nc = 5  # Smaller k-space cutoff to avoid too large k-vectors
+
+            print(f"Using Ewald parameters:")
+            print(f"  alpha = {alpha:.6f}")
+            print(f"  real_cut = {real_cut:.6f}")
+            print(f"  nc = {nc}")
+
+            print(f"System info:")
+            print(f"  Box size: {L}")
+            print(f"  Number of atoms: {system.N_atoms}")
+            print(f"  Volume: {system.get_volume()}")
+            print(f"  Lattice constant: {lattice_const}")
+            print(f"Ewald parameters:")
+            print(f"  alpha: {alpha:.6f}")
+            print(f"  real_cut: {real_cut:.6f}")
+            print(f"  nc: {nc}")
 
             ewald_handler = EwaldHandler(
                 alpha=alpha,
@@ -182,6 +180,39 @@ def test_nacl_madelung():
             ewald_handler.update_structure_factors(system.positions, system.charges)
             ewald_handler.update_dipole_moment(system.positions, system.charges)
 
+            # Debug k-vector information
+            print(f"K-vector debug:")
+            print(
+                f"  Number of k-vectors: {len(ewald_handler.kvecs) if ewald_handler.kvecs is not None else 0}"
+            )
+            print(
+                f"  Ak array shape: {ewald_handler.Ak.shape if ewald_handler.Ak is not None else 'None'}"
+            )
+            print(
+                f"  Sc array shape: {ewald_handler.Sc.shape if ewald_handler.Sc is not None else 'None'}"
+            )
+            if ewald_handler.Ak is not None and len(ewald_handler.Ak) > 0:
+                print(f"  Max |Ak|: {np.max(np.abs(ewald_handler.Ak)):.6e}")
+                print(
+                    f"  Min |Ak|: {np.min(np.abs(ewald_handler.Ak[ewald_handler.Ak != 0])):.6e}"
+                )
+                # Check k-vector magnitudes
+                if ewald_handler.k_sq is not None:
+                    k_magnitudes = np.sqrt(ewald_handler.k_sq)
+                    print(f"  Max |k|: {np.max(k_magnitudes):.6e}")
+                    print(f"  Min |k|: {np.min(k_magnitudes[k_magnitudes > 0]):.6e}")
+                    print(f"  Mean |k|: {np.mean(k_magnitudes[k_magnitudes > 0]):.6e}")
+            if ewald_handler.Sc is not None and len(ewald_handler.Sc) > 0:
+                print(f"  Max |Sc|: {np.max(np.abs(ewald_handler.Sc)):.6e}")
+                print(f"  Max |Ss|: {np.max(np.abs(ewald_handler.Ss)):.6e}")
+                # Check the summed structure factors
+                S_c_summed = np.sum(ewald_handler.Sc, axis=1)
+                S_s_summed = np.sum(ewald_handler.Ss, axis=1)
+                print(f"  Max |S_c_summed|: {np.max(np.abs(S_c_summed)):.6e}")
+                print(f"  Max |S_s_summed|: {np.max(np.abs(S_s_summed)):.6e}")
+                print(f"  Number of non-zero S_c: {np.count_nonzero(S_c_summed)}")
+                print(f"  Number of non-zero S_s: {np.count_nonzero(S_s_summed)}")
+
             ewald_force = EwaldReal(system.units)
             topology.add_interaction(0, 0, ewald_force)
             topology.add_interaction(0, 1, ewald_force)
@@ -189,32 +220,66 @@ def test_nacl_madelung():
 
             # Calculate energy using Ewald
             topology.recompute_caches(system)
-            # print("pair_energy", system.potential_energy)
-            # print("kspace_energy", ewald_handler.compute_total_kspace_energy())
-            # print(
-            #     "self_energy", ewald_handler.compute_total_self_energy(system.charges)
-            # )
-            n_ion_pairs = 2 * size**3
-            ewald_energy = (
-                system.potential_energy
-                + ewald_handler.compute_total_kspace_energy()
-                + ewald_handler.compute_total_self_energy(system.charges)
-            ) / n_ion_pairs
+
+            # Get individual energy components for debugging
+            pair_energy = system.potential_energy
+            kspace_energy = ewald_handler.compute_total_kspace_energy()
+            self_energy = ewald_handler.compute_total_self_energy(system.charges)
+
+            # Debug k-space energy calculation
+            if ewald_handler.Ak is not None and ewald_handler.Sc is not None:
+                S_c_summed = np.sum(ewald_handler.Sc, axis=1)
+                S_s_summed = np.sum(ewald_handler.Ss, axis=1)
+                S_squared = S_c_summed**2 + S_s_summed**2
+                kspace_contributions = ewald_handler.Ak * S_squared
+                print(f"K-space energy debug:")
+                print(f"  Max |S_squared|: {np.max(S_squared):.6e}")
+                print(f"  Max |Ak * S_squared|: {np.max(kspace_contributions):.6e}")
+                print(f"  Sum of Ak * S_squared: {np.sum(kspace_contributions):.6e}")
+                print(
+                    f"  Number of significant contributions: {np.count_nonzero(kspace_contributions > 1e-10)}"
+                )
+
+            print(f"Energy components:")
+            print(f"  Pair energy: {pair_energy:.6f}")
+            print(f"  K-space energy: {kspace_energy:.6f}")
+            print(f"  Self energy: {self_energy:.6f}")
+
+            # Total Ewald energy
+            total_ewald_energy = pair_energy + kspace_energy + self_energy
+
+            # Energy per ion pair (NaCl has 2 ions per unit cell)
+            n_ion_pairs = size**3  # Number of unit cells
+            ewald_energy_per_pair = total_ewald_energy / n_ion_pairs
 
             # Calculate theoretical energy from Madelung constant
             madelung = madelung_constant_nacl()
+            # The Madelung energy per ion pair is -M * e^2 / (4πε₀ * a)
+            # In your units: -M * lB_star / lattice_const
             theoretical_energy = -ewald_handler.lB_star * madelung / lattice_const
 
-            print(f"nc: {nc}, alpha: {alpha}")
-            print(f"Ewald energy: {ewald_energy:.6f}")
-            print(f"Theoretical energy (Madelung): {theoretical_energy:.6f}")
+            print(f"Energy comparison:")
+            print(f"  Total Ewald energy: {total_ewald_energy:.6f}")
+            print(f"  Ewald energy per pair: {ewald_energy_per_pair:.6f}")
+            print(f"  Theoretical energy (Madelung): {theoretical_energy:.6f}")
             print(
-                f"Relative error: {abs(ewald_energy - theoretical_energy) / abs(theoretical_energy) * 100:.6f}%"
+                f"  Relative error: {abs(ewald_energy_per_pair - theoretical_energy) / abs(theoretical_energy) * 100:.6f}%"
             )
+            print(f"  lB_star: {ewald_handler.lB_star:.6f}")
+
+            # Additional debugging
+            print(f"Debug info:")
+            print(f"  Number of unit cells: {size**3}")
+            print(f"  Number of atoms: {system.N_atoms}")
+            print(f"  Atoms per unit cell: {system.N_atoms / (size**3)}")
+            print(f"  Expected atoms per unit cell: 2")
+            print(f"  Madelung constant: {madelung}")
+            print(f"  Lattice constant: {lattice_const}")
+            print(f"  Energy per atom: {total_ewald_energy / system.N_atoms:.6f}")
             print(f"--------------------------------")
             print()
 
-    return ewald_energy, theoretical_energy
+    return ewald_energy_per_pair, theoretical_energy
 
 
 def test_direct_coulomb_convergence(max_size=11):

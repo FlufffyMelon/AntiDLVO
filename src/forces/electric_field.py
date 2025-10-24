@@ -1,6 +1,6 @@
 import numpy as np
 from typing import Tuple
-from units import Units
+from ..units import Units
 from .basic_force import OneBodyForce
 
 
@@ -30,7 +30,7 @@ class ElectricField(OneBodyForce):
         # Conversion factor from V/nm to kJ/(mol nm)
         # 1 V/nm * 1 e = 96.485 kJ/mol/nm
         # This is because 1 eV = 96.485 kJ/mol
-        conversion_factor = 96.4
+        conversion_factor = 96.485
         self.voltage = self.voltage * conversion_factor
 
     def __call__(

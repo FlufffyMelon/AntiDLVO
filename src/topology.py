@@ -4,7 +4,7 @@ Topology class for managing force field interactions and calculating energies.
 
 import numpy as np
 from typing import Dict, List, Tuple, Optional
-from forces import *
+from .forces import *
 from .system import System
 from .units import Units
 from .profiler import Profiler
@@ -212,6 +212,10 @@ class Topology:
         force_on_i = np.zeros(3)
         virial_scalar = 0.0
 
+        pair_scalar = 0.0
+        intermol_scalar = 0.0
+        one_scalar = 0.0
+
         # Temporary set new positions
         old_positions = system.positions[indices, :].copy()
 
@@ -259,6 +263,10 @@ class Topology:
 
                 return np.inf, np.zeros(3), 0.0
 
+            pair_scalar += pair_e
+            intermol_scalar += intermol_e
+            one_scalar += one_e
+
             energy_scalar += pair_e + intermol_e + one_e
             force_on_i += pair_force + intermol_force + one_force
             virial_scalar += pair_w + intermol_w
@@ -266,7 +274,11 @@ class Topology:
         if new_positions is not None:
             system.positions[indices, :] = old_positions
 
-        return energy_scalar, force_on_i, virial_scalar
+        return (
+            energy_scalar,
+            force_on_i,
+            virial_scalar,
+        )
 
     def recompute_caches(self, system: System) -> None:
         """Compute and cache total potential energy and virial.
@@ -299,6 +311,7 @@ class Topology:
             dipole_energy = system.ewald_handler.compute_dipole_correction(
                 system.get_volume()
             )
+
             ewald_energy += kspace_energy + self_energy + dipole_energy
 
         return energy + ewald_energy, virial
@@ -313,9 +326,7 @@ class Topology:
         if system.N_atoms <= 1:
             return 0.0, 0.0
 
-        positions, molecule_ids, types, names, charges, masses = (
-            system.get_active_atoms()
-        )
+        _, molecule_ids, types, _, charges, _ = system.get_active_atoms()
         energy_total = 0.0
         virial_total = 0.0
 
@@ -599,7 +610,12 @@ class Topology:
         # Identify if any types have an Wall_10_4_3 one-body force
         types_with_wall = False
         for t_id, flist in self.one_body_forces.items():
-            walls = [f for f in flist if isinstance(f, Wall_10_4_3)]
+            walls = [
+                f
+                for f in flist
+                if isinstance(f, Wall_10_4_3)
+                # if isinstance(f, Wall_10_4_3) or isinstance(f, ElectricField)
+            ]
             if walls:
                 types_with_wall = True
                 break

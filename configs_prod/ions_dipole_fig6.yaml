@@ -1,9 +1,16 @@
 # Test configuration with dipole molecules mixed with particles
 experiment:
   # name: "ions_dipole_disp_${sampler.max_displacement}_1M_steps"
-  name: "ions_dipole_test_1M_steps"
-  results_dir: "results"
+  name: "ions_dipole_Cz_${Cz}"
+  results_dir: "results_prod/fig_6"
   description: "Mixed system of ions and dipoles in NVT ensemble"
+
+# Control parameters
+C: 0.01
+Cz: 0.1
+H: 4.0 # nm
+pz: 27.6 # D
+psi: -0.2 # V
 
 units:
   system: "standard"
@@ -18,21 +25,21 @@ system:
   initial_capacity: 2048
   init:
     mode: "random"
-    min_distance: 0.4  # Increased to prevent overlaps
-    padding: [0.0, 0.0, 0.4]  # Increased padding in all directions
-  H: 5.0 # nm
+    min_distance: 0.5  # Increased to prevent overlaps
+    padding: [0.0, 0.0, 0.5]  # Increased padding in all directions
+  L: 20.0 # nm
   box:
-    - 20
-    - 20
-    - ${system.H}
+    - ${system.L}
+    - ${system.L}
+    - ${H}
   pbc: [true, true, false]
 
 ewald:
   # Optimal Ewald parameters calculated based on desired accuracy (eps) and system properties
-  eps: 1e-4
-  real_cut: ${eval:"min(${system.box[0]}, ${system.box[1]}, ${system.H}) / 2.0"}
+  eps: 1e-3
+  real_cut: ${eval:"min(${system.box[0]}, ${system.box[1]}, ${H}) / 2.0"}
   alpha: ${eval:"sqrt(-log(${ewald.eps})) / ${ewald.real_cut}"}
-  n_c: ${eval:"ceil(2 * sqrt(${ewald.alpha} * (-log(${ewald.eps}))) * min(${system.box[0]}, ${system.box[1]}, ${system.H}) / (2 * pi))"}
+  n_c: ${eval:"ceil(2 * sqrt(${ewald.alpha} * (-log(${ewald.eps}))) * min(${system.box[0]}, ${system.box[1]}, ${H}) / (2 * pi))"}
 
   dielectric: 78.0
   z_scale_factor: 4.0
@@ -43,21 +50,21 @@ types:
       type: "Na"
       mass: 39.0983 # amu
       charge: 1.0 # e
-      count: ${eval:"0.602214076 * 0.05 * 400 * ${system.H}"}
+      count: ${eval:"0.602214076 * ${C} * ${system.L} * ${system.L} * ${H}"}
   - Particle:
       type: "Cl"
       mass: 35.453 # amu
       charge: -1.0 # e
-      count: ${eval:"0.602214076 * 0.05 * 400 * ${system.H}"}
+      count: ${eval:"0.602214076 * ${C} * ${system.L} * ${system.L} * ${H}"}
   - Dipole:
       type_plus: "Ip"
       type_minus: "Im"
       type_ghost: "G"
-      length: 0.28  # nm
-      ghost_count: 0
+      length: ${eval:"${pz} / 48.032047"}  # nm
+      ghost_count: 3
       mass: 18.01528 # amu
-      charge: 0.75 # e
-      count: ${eval:"0.602214076 * 0.5 * 400 * ${system.H}"}
+      charge: 1.0 # e
+      count: ${eval:"0.602214076 * ${Cz} * ${system.L} * ${system.L} * ${H}"}
 
 r_Na: 0.1
 r_Cl: 0.18
@@ -149,7 +156,7 @@ one_body:
   - type: "(Na, Cl, Ip, Im, G)"
     forces:
       - kind: electric_field
-        voltage: 0.3  # V
+        voltage: ${psi}  # V
         direction: up
 
   - type: "Na"

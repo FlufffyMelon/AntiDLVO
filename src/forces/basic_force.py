@@ -1,7 +1,7 @@
 import numpy as np
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Tuple
-from units import Units
+from ..units import Units
 
 
 class Force(ABC):

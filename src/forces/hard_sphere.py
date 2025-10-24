@@ -1,6 +1,6 @@
 import numpy as np
 from typing import Dict, Tuple
-from units import Units
+from ..units import Units
 from .basic_force import Force
 
 

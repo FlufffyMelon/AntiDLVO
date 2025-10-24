@@ -1,6 +1,6 @@
 import numpy as np
 from typing import Tuple
-from units import Units
+from ..units import Units
 from .basic_force import OneBodyForce
 
 

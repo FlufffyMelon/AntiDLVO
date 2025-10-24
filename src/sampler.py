@@ -202,41 +202,62 @@ class Sampler:
                 self.n_moves += 1
 
                 # Log if needed
-                if self.logger and self.n_moves % self.logger.log_interval == 0:
+                if (
+                    self.logger
+                    and self.n_moves % self.logger.log_interval == 0
+                    and self.logger.log_interval != -1
+                ):
                     with self.profiler.measure("log_step"):
                         self.logger.log_step(
                             self.n_moves, self.system, self.topology, self
                         )
 
-                if self.logger and self.n_moves % self.logger.xyz_interval == 0:
+                if (
+                    self.logger
+                    and self.n_moves % self.logger.xyz_interval == 0
+                    and self.logger.xyz_interval != -1
+                ):
                     with self.profiler.measure("write_xyz"):
                         self.logger.write_xyz(self.system, self.n_moves, self.topology)
 
-    def _generate_random_rotation(self) -> np.ndarray:
+    def _rotate_vector_randomly(self, vectors: np.ndarray) -> np.ndarray:
         """
-        Generate a random 3D rotation matrix using Euler angles.
+        Rotate a 3D vector by a random angle about a random axis perpendicular to it.
+
+        Args:
+            vector: The 3D vector to be rotated.
 
         Returns:
-            3x3 rotation matrix
+            Rotated 3D vector (np.ndarray).
         """
-        # Generate three random numbers for Euler angles
-        u1, u2, u3 = self.rng.random(3)
+        # Make a copy to avoid modifying the input
+        vectors_init = vectors.copy()
+        assert vectors_init.shape[0] >= 2, (
+            f"vectors_init must have at least 2 rows, got {vectors_init.shape[0]}"
+        )
+        dipole_vector = vectors_init[1, :] - vectors_init[-1, :]
 
-        # Max rotation angle in radians
+        # Normalize the input vector
+        vector_unit = dipole_vector / np.linalg.norm(dipole_vector)
+
+        # Fast way to find a non-zero perpendicular
+        if abs(vector_unit[2]) < 0.9:
+            perp = np.array([-vector_unit[1], vector_unit[0], 0.0])
+        else:
+            perp = np.array([0.0, -vector_unit[2], vector_unit[1]])
+        perp /= np.linalg.norm(perp)
+
+        # Choose a random axis in the plane perpendicular to vector_unit
+        phi = 2 * np.pi * self.rng.random()
+        axis = np.cos(phi) * perp + np.sin(phi) * np.cross(vector_unit, perp)
+        axis = axis / np.linalg.norm(axis)
+
+        # Sample a random rotation angle up to max_rotation (in radians)
         max_angle = self.max_rotation * np.pi / 180.0
+        angle = self.rng.random() * max_angle
 
-        # Uniformly sample rotation axis (theta, phi) and angle
-        theta = 2 * np.pi * u1  # azimuthal angle [0, 2pi)
-        phi = np.arccos(2 * u2 - 1)  # polar angle [0, pi]
-        angle = u3 * max_angle  # rotation angle [0, max_angle]
-
-        # Rotation axis (unit vector)
-        x = np.sin(phi) * np.cos(theta)
-        y = np.sin(phi) * np.sin(theta)
-        z = np.cos(phi)
-        axis = np.array([x, y, z])
-
-        # Rodrigues' rotation formula
+        # Rodrigues' rotation formula to build the rotation matrix
+        x, y, z = axis
         K = np.array([[0, -z, y], [z, 0, -x], [-y, x, 0]])
         identity = np.eye(3)
         axis_outer = np.outer(axis, axis)
@@ -245,7 +266,11 @@ class Sampler:
             + (1 - np.cos(angle)) * axis_outer
             + np.sin(angle) * K
         )
-        return R
+
+        # Apply the rotation to the input vector
+        vector_rotated = vectors_init @ R
+
+        return vector_rotated
 
     def _attempt_translation(self) -> None:
         """Attempt to translate and rotate a random molecule (NVT/NPT/muVT)."""
@@ -273,10 +298,12 @@ class Sampler:
             unwrapped = self.system.unwrap_molecule(old_positions)
             centroid = np.mean(unwrapped, axis=0)
 
-            rotation_matrix = self._generate_random_rotation()
+            # rotation_matrix = self._generate_random_rotation()
 
             centered = unwrapped - centroid
-            rotated = centered @ rotation_matrix
+
+            # rotated = centered @ rotation_matrix
+            rotated = self._rotate_vector_randomly(centered)
             translated = rotated + centroid + displacement
             new_positions = self.system.apply_pbc(translated)
         else:

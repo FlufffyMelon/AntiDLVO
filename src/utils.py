@@ -19,7 +19,7 @@ from .ewald import EwaldHandler
 from .system import System
 from .topology import Topology
 from .sampler import Sampler
-from forces import *
+from .forces import *
 from .units import Units
 from .logger import Logger
 from .profiler import Profiler
@@ -36,10 +36,34 @@ def load_config(config_file: str, overrides: Optional[List[str]] = None):
     if not Path(config_file).exists():
         raise FileNotFoundError(f"Configuration file {config_file} not found")
 
-    # Register a simple eval resolver (dangerous if untrusted inputs)
+    # Register a simple eval resolver with mathematical functions
     def _eval_resolver(expr: str):
         try:
-            return eval(expr, {}, {})
+            # Provide mathematical functions in the eval context
+            import math
+            import numpy as np
+
+            eval_globals = {
+                "sqrt": math.sqrt,
+                "log": math.log,
+                "exp": math.exp,
+                "sin": math.sin,
+                "cos": math.cos,
+                "tan": math.tan,
+                "asin": math.asin,
+                "acos": math.acos,
+                "atan": math.atan,
+                "ceil": math.ceil,
+                "floor": math.floor,
+                "abs": abs,
+                "min": min,
+                "max": max,
+                "pi": math.pi,
+                "e": math.e,
+                "np": np,
+                "math": math,
+            }
+            return eval(expr, eval_globals, {})
         except Exception as e:
             raise ValueError(f"Failed to eval expression '{expr}': {e}")
 
@@ -640,6 +664,23 @@ def _configure_pair_force(force_name: str, params: dict, units: Units):
         return EwaldReal(
             **params,
             units=units,
+        )
+    if name in ("coulomb", "coulomb_sum"):
+        # Extract Coulomb parameters
+        nx_images = params.get("nx_images", 0)
+        ny_images = params.get("ny_images", 0)
+        nz_images = params.get("nz_images", 0)
+        cutoff = params.get("cutoff", None)
+        exclude_intermol = params.get("exclude_intermol", False)
+
+        from .forces.coulomb import Coulomb
+        return Coulomb(
+            units=units,
+            cutoff=cutoff,
+            nx_images=nx_images,
+            ny_images=ny_images,
+            nz_images=nz_images,
+            exclude_intermol=exclude_intermol,
         )
     if name in ("huggins_mayer", "huggins_mayer_potential"):
         if (

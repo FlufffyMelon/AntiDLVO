@@ -1,0 +1,158 @@
+# Test 7: System with ions and dipoles in 3D periodic arrangement
+experiment:
+  name: "test_7_periodic_system"
+  results_dir: "results"
+  description: "System with ions and dipoles in 3D periodic arrangement - Ewald vs Coulomb"
+
+units:
+  system: "standard"
+
+simulation:
+  ensemble: "NVT"
+  temperature: 298.0  # K
+
+system:
+  initial_capacity: 64  # Adjust based on number of particles
+  init:
+    mode: "random"
+    min_distance: 0.4  # Increased to prevent overlaps
+    padding: [0.0, 0.0, 0.0]  # Increased padding in all directions
+  box:
+    - 20  # Large box to accommodate the system
+    - 20
+    - 20
+  pbc: [true, true, true]  # Periodic in all dimensions
+
+ewald:
+  # Desired accuracy for Ewald summation
+  eps: ${eval:"1e-4"}
+
+  # Real-space cutoff: use 1/2 of smallest box dimension
+  real_cut: ${eval:"min(${system.box[0]}, ${system.box[1]}, ${system.box[2]}) / 2.0"}
+
+  # Alpha parameter: calculated using standard formula
+  alpha: ${eval:"sqrt(-log(${ewald.eps})) / ${ewald.real_cut}"}
+
+  # K-space cutoff: calculated based on alpha and desired accuracy
+  n_c: ${eval:"ceil(2 * sqrt(${ewald.alpha} * (-log(${ewald.eps}))) * min(${system.box[0]}, ${system.box[1]}, ${system.box[2]}) / (2 * pi))"}
+
+  dielectric: 1.0
+  z_scale_factor: 1.0
+  dipole_correction: false
+
+types:
+  - Particle:
+      type: "Na"
+      mass: 39.0983  # amu
+      charge: 1.0    # e
+      count: 10       # Will be set dynamically in test
+  - Particle:
+      type: "Cl"
+      mass: 35.453   # amu
+      charge: -1.0   # e
+      count: 10       # Will be set dynamically in test
+  # - Dipole:
+  #     type_plus: "Ip"
+  #     type_minus: "Im"
+  #     type_ghost: "G"
+  #     length: 1.0     # nm
+  #     ghost_count: 0
+  #     mass: 18.01528  # amu (water-like)
+  #     charge: 1.0     # e
+  #     count: 10        # Will be set dynamically in test
+
+pairs:
+  # Ion-ion interactions
+  - types: [Na, Na]
+    forces:
+      - kind: ewald
+  - types: [Cl, Cl]
+    forces:
+      - kind: ewald
+  - types: [Na, Cl]
+    forces:
+      - kind: ewald
+
+  # Ion-dipole interactions
+  - types: ["Na", "(Ip, Im)"]
+    forces:
+      - kind: ewald
+  - types: ["Cl", "(Ip, Im)"]
+    forces:
+      - kind: ewald
+
+  # Dipole-dipole interactions
+  - types: [Ip, Ip]
+    forces:
+      - kind: ewald
+  - types: [Im, Im]
+    forces:
+      - kind: ewald
+  - types: [Ip, Im]
+    forces:
+      - kind: ewald
+
+pairs_coulomb:
+  # Ion-ion interactions
+  - types: [Na, Na]
+    forces:
+      - kind: coulomb
+        nx_images: ${n_images}
+        ny_images: ${n_images}
+        nz_images: ${n_images}
+
+  - types: [Cl, Cl]
+    forces:
+      - kind: coulomb
+        nx_images: ${n_images}
+        ny_images: ${n_images}
+        nz_images: ${n_images}
+
+  - types: [Na, Cl]
+    forces:
+      - kind: coulomb
+        nx_images: ${n_images}
+        ny_images: ${n_images}
+        nz_images: ${n_images}
+
+  # Ion-dipole interactions
+  - types: ["Na", "(Ip, Im)"]
+    forces:
+      - kind: coulomb
+        nx_images: ${n_images}
+        ny_images: ${n_images}
+        nz_images: ${n_images}
+  - types: ["Cl", "(Ip, Im)"]
+    forces:
+      - kind: coulomb
+        nx_images: ${n_images}
+        ny_images: ${n_images}
+        nz_images: ${n_images}
+
+  # Dipole-dipole interactions
+  - types: [Ip, Ip]
+    forces:
+      - kind: coulomb
+        nx_images: ${n_images}
+        ny_images: ${n_images}
+        nz_images: ${n_images}
+  - types: [Im, Im]
+    forces:
+      - kind: coulomb
+        nx_images: ${n_images}
+        ny_images: ${n_images}
+        nz_images: ${n_images}
+  - types: [Ip, Im]
+    forces:
+      - kind: coulomb
+        nx_images: ${n_images}
+        ny_images: ${n_images}
+        nz_images: ${n_images}
+
+# Test parameters
+test_params:
+  random_seed: 42    # Seed for reproducible random particle placement
+  # image_counts: [1, 2, 3, 4, 5, 6, 8, 10]  # Numbers of image cells to test
+  image_counts: [1, 2, 3, 4, 5, 6]  # Numbers of image cells to test
+
+debug: false

@@ -8,6 +8,7 @@ import sys
 import traceback
 from pathlib import Path
 import time
+import numpy as np
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -53,15 +54,13 @@ def run_simulation(config_file: str, overrides=None):
     # Run simulation
     n_steps = cfg.simulation.get("n_steps", 1000)
 
-    # Check initial configuration for problems
-    # from src.utils import check_initial_configuration_energy
-
-    # check_initial_configuration_energy(system, topology)
-
     print(f"Running {n_steps} Monte Carlo steps...")
 
     initial_energy = topology.get_energy(system)
     print(f"Initial energy: {initial_energy:.6f} {units.energy_label}")
+
+    if np.isinf(initial_energy):
+        raise ValueError("Initial energy is infinite")
 
     t0 = time.perf_counter()
     try:

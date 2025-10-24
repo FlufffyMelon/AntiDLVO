@@ -1,4 +1,9 @@
 .venv/
 .vscode/
-results/
+results*/
 **/__pycache__/**
+*.png
+*.txt
+*.lammps
+tests/results/
+slurm*.out

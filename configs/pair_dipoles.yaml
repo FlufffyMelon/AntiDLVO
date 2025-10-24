@@ -1,0 +1,80 @@
+# Test configuration with dipole molecules mixed with particles
+experiment:
+  name: "ions_dipole_1M_steps"
+  # name: "ions_dipole_test"
+  results_dir: "results"
+  description: "Mixed system of ions and dipoles in NVT ensemble"
+
+units:
+  system: "standard"
+
+simulation:
+  ensemble: "NVT"
+  temperature: 298 # K
+  n_steps: 1000000
+
+system:
+  # n_atoms: 256  # This will be used for counts or fractions, actual atom count may differ
+  initial_capacity: 2
+  box:
+    - 200
+    - 200
+    - 200
+  pbc: [true, true, true]
+
+ewald:
+  # alpha: 0.3 # 0.1
+  # real_cut: 10 # 4.6
+  # n_c: 22 # 20
+  # Optimal Ewald parameters calculated using standard formulas
+  # Based on desired accuracy (eps) and system properties
+
+  # Desired accuracy for Ewald summation
+  eps: ${eval:"1e-8"}
+
+  # Real-space cutoff: use 1/4 of smallest box dimension
+  real_cut: ${eval:"min(${system.box[0]}, ${system.box[1]}, ${system.box[2]}) / 2.0"}
+
+  # Alpha parameter: calculated using standard formula
+  # alpha = sqrt(-log(eps)) / real_cut
+  alpha: ${eval:"sqrt(-log(${ewald.eps})) / ${ewald.real_cut}"}
+
+  # K-space cutoff: calculated based on alpha and desired accuracy
+  # k_cut = 2 * sqrt(alpha * (-log(eps)))
+  # nc = ceil(k_cut * L / (2 * pi))
+  n_c: ${eval:"ceil(2 * sqrt(${ewald.alpha} * (-log(${ewald.eps}))) * min(${system.box[0]}, ${system.box[1]}, ${system.box[2]}) / (2 * pi))"}
+
+  dielectric: 1.0
+  z_scale_factor: 1.0
+  dipole_correction: false
+
+types:
+  - Dipole:
+      type_plus: "Ip"
+      type_minus: "Im"
+      type_ghost: "G"
+      length: 1  # nm
+      ghost_count: 0
+      mass: 18.01528 # amu
+      charge: 1 # e
+      count: 0
+
+pairs:
+  # ion-ion interactions
+  - types: [Ip, Ip]
+    forces:
+      - kind: ewald
+
+  - types: [Im, Im]
+    forces:
+      - kind: ewald
+
+  - types: [Ip, Im]
+    forces:
+      - kind: ewald
+
+debug: false
+
+logger:
+  log_interval: 100
+  xyz_interval: 100

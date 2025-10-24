@@ -1,0 +1,100 @@
+# Test 8: System with ions and dipoles in 2D periodic arrangement
+experiment:
+  name: "test_8_2d_periodic_system"
+  results_dir: "results"
+  description: "System with ions and dipoles in 2D periodic arrangement - Ewald vs Coulomb"
+
+units:
+  system: "standard"
+
+simulation:
+  ensemble: "NVT"
+  temperature: 298.0  # K
+
+system:
+  initial_capacity: 64  # Adjust based on number of particles
+  box:
+    - 20  # Large box to accommodate the system
+    - 20
+    - 20
+  pbc: [true, true, false]  # Periodic in x and y, but not in z
+
+ewald:
+  # Desired accuracy for Ewald summation
+  eps: ${eval:"1e-6"}
+
+  # Real-space cutoff: use 1/4 of smallest box dimension
+  real_cut: ${eval:"min(${system.box[0]}, ${system.box[1]}) / 4.0"}
+
+  # Alpha parameter: calculated using standard formula
+  alpha: ${eval:"sqrt(-log(${ewald.eps})) / ${ewald.real_cut}"}
+
+  # K-space cutoff: calculated based on alpha and desired accuracy
+  n_c: ${eval:"ceil(2 * sqrt(${ewald.alpha} * (-log(${ewald.eps}))) * min(${system.box[0]}, ${system.box[1]}) / (2 * pi))"}
+
+  dielectric: 1.0
+  z_scale_factor: 3.0  # Adjust scaling factor for 2D periodicity
+  dipole_correction: true
+
+types:
+  - Particle:
+      type: "Na"
+      mass: 39.0983  # amu
+      charge: 1.0    # e
+      count: 0       # Will be set dynamically in test
+  - Particle:
+      type: "Cl"
+      mass: 35.453   # amu
+      charge: -1.0   # e
+      count: 0       # Will be set dynamically in test
+  - Dipole:
+      type_plus: "Ip"
+      type_minus: "Im"
+      type_ghost: "G"
+      length: 1.0     # nm
+      ghost_count: 0
+      mass: 18.01528  # amu (water-like)
+      charge: 1.0     # e
+      count: 0        # Will be set dynamically in test
+
+pairs:
+  # Ion-ion interactions
+  - types: [Na, Na]
+    forces:
+      - kind: ewald
+  - types: [Cl, Cl]
+    forces:
+      - kind: ewald
+  - types: [Na, Cl]
+    forces:
+      - kind: ewald
+
+  # Ion-dipole interactions
+  - types: ["Na", "(Ip, Im)"]
+    forces:
+      - kind: ewald
+  - types: ["Cl", "(Ip, Im)"]
+    forces:
+      - kind: ewald
+
+  # Dipole-dipole interactions
+  - types: [Ip, Ip]
+    forces:
+      - kind: ewald
+  - types: [Im, Im]
+    forces:
+      - kind: ewald
+  - types: [Ip, Im]
+    forces:
+      - kind: ewald
+
+# Test parameters
+test_params:
+  random_seed: 42    # Seed for reproducible random particle placement
+  n_ions: 8      # Number of ions in the system (will be split between Na+ and Cl-)
+  n_dipoles: 8   # Number of dipoles in the system
+  dipole_length: 1.0  # nm
+  # image_counts: [1, 2, 3, 4, 5, 6, 8, 10, 12, 15]  # Numbers of image cells to test in x and y
+  image_counts: [1, 2, 3, 4, 5]  # Numbers of image cells to test in x and y
+
+debug: false

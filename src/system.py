@@ -65,8 +65,9 @@ class System:
         )
 
         # Update Bjerrum length with current temperature
+        self.lB_star = None
         if self.ewald_handler and self.temp is not None:
-            self.ewald_handler.update_bjerrum_length(self.temp)
+            self.lB_star = self.ewald_handler.update_bjerrum_length(self.temp)
 
         # Validate ensemble parameters
         self._validate_ensemble_parameters()

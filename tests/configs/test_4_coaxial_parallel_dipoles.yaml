@@ -1,0 +1,68 @@
+# Test 4: Two coaxial dipoles (same axis) with parallel orientations
+experiment:
+  name: "test_4_coaxial_parallel_dipoles"
+  results_dir: "results"
+  description: "Two coaxial dipoles with parallel orientations at varying distances"
+
+units:
+  system: "standard"
+
+simulation:
+  ensemble: "NVT"
+  temperature: 298.0  # K
+
+system:
+  initial_capacity: 4  # 2 dipoles = 4 particles
+  box:
+    - 200  # Large box to minimize periodic effects
+    - 200
+    - 200
+  pbc: [true, true, true]
+
+ewald:
+  # Desired accuracy for Ewald summation
+  eps: ${eval:"1e-6"}
+
+  # Real-space cutoff: use 1/4 of smallest box dimension
+  real_cut: ${eval:"min(${system.box[0]}, ${system.box[1]}, ${system.box[2]}) / 2.0"}
+
+  # Alpha parameter: calculated using standard formula
+  alpha: ${eval:"sqrt(-log(${ewald.eps})) / ${ewald.real_cut}"}
+
+  # K-space cutoff: calculated based on alpha and desired accuracy
+  n_c: ${eval:"ceil(2 * sqrt(${ewald.alpha} * (-log(${ewald.eps}))) * min(${system.box[0]}, ${system.box[1]}, ${system.box[2]}) / (2 * pi))"}
+
+  dielectric: 1.0
+  z_scale_factor: 1.0
+  dipole_correction: false
+
+types:
+  - Dipole:
+      type_plus: "Ip"
+      type_minus: "Im"
+      type_ghost: "G"
+      length: 1.0     # nm
+      ghost_count: 0
+      mass: 18.01528  # amu (water-like)
+      charge: 1.0     # e
+      count: 2
+
+pairs:
+  - types: [Ip, Ip]
+    forces:
+      - kind: ewald
+  - types: [Im, Im]
+    forces:
+      - kind: ewald
+  - types: [Ip, Im]
+    forces:
+      - kind: ewald
+
+# Test parameters
+test_params:
+  distances: [2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 12.0, 15.0, 18.0, 20.0]  # nm
+  dipole_length: 1.0  # nm
+  # Both dipoles oriented along +z direction and positioned on the same z-axis
+  # Theoretical energy for coaxial parallel dipoles: E = 2*k*q²*(1/r - 1/(r+l) - 1/(r-l))
+
+debug: false
