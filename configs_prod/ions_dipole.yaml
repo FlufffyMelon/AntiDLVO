@@ -1,16 +1,23 @@
 # Test configuration with dipole molecules mixed with particles
 experiment:
-  # name: "ions_dipole_disp_${sampler.max_displacement}_1M_steps"
-  name: "ions_dipole_sigma_${sigma}"
-  results_dir: "results_prod/fig_5"
+  name: "ions_dipole"
+  results_dir: "results_prod"
   description: "Mixed system of ions and dipoles in NVT ensemble"
 
 # Control parameters
-C: 0.01
-Cz: 0.1
+C: 0.01 # mol/l
+Cz: 0.1 # mol/l
+L: 20.0 # nm
 H: 3.0 # nm
 pz: 27.6 # D
-sigma: -0.04 # C/m^2
+sigma: -20 # µC/cm^2
+N_wall: ${eval:"round(abs(${sigma} * ${L} * ${L} / 16.020506248)**0.5)**2"}
+
+r_Na: 0.331
+r_Cl: 0.383
+r_Ip: ${r_Na}
+r_Im: ${r_Cl}
+r_G: ${eval:"${pz} / 48.032047 / 2.0"}  # nm
 
 units:
   system: "standard"
@@ -25,23 +32,28 @@ system:
   initial_capacity: 2048
   non_static_init:
     mode: "random"
-    min_distance: 0.9  # Increased to prevent overlaps
-    padding: [0.0, 0.0, 0.5]  # Increased padding in all directions
+    # min_distance: 1.0  # Increased to prevent overlaps
+    min_distance: ${eval:"2 * max(${r_Na}, ${r_Cl}, ${r_Ip}, ${r_Im}, ${r_G}) + 1e-6"}
+    padding:
+      - 0.0
+      - 0.0
+      - ${eval:"2 * max(${r_Na}, ${r_Cl}, ${r_Ip}, ${r_Im}, ${r_G}) + 1e-6"}  # Increased padding in all directions
   static_init:
     mode: "uniform"
-  L: 20.0 # nm
   box:
-    - ${system.L}
-    - ${system.L}
+    - ${L}
+    - ${L}
     - ${H}
   pbc: [true, true, false]
 
 ewald:
   # Optimal Ewald parameters calculated based on desired accuracy (eps) and system properties
-  eps: 1e-3
-  real_cut: ${eval:"min(${system.L}, ${H}) / 2.0"}
+  eps: 1e-8
+  # real_cut: ${eval:"min(${L}, ${H}) / 2.0 - 0.01"}
+  real_cut: 1.49
   alpha: ${eval:"sqrt(-log(${ewald.eps})) / ${ewald.real_cut}"}
-  n_c: ${eval:"ceil(2 * sqrt(${ewald.alpha} * (-log(${ewald.eps}))) * min(${system.L}, ${H}) / (2 * pi))"}
+  # n_c: ${eval:"ceil(2 * sqrt(${ewald.alpha} * (-log(${ewald.eps}))) * min(${L}, ${H}) / (2 * pi))"}
+  n_c: ${eval:"ceil(2 * sqrt(${ewald.alpha} * (-log(${ewald.eps}))) * 3.0 / (2 * pi))"}
 
   dielectric: 78.0
   z_scale_factor: 4.0
@@ -52,39 +64,37 @@ types:
       type: "Na"
       mass: 39.0983 # amu
       charge: 1.0 # e
-      count: ${eval:"0.602214076 * ${C} * ${system.L} * ${system.L} * ${H}"}
+      count: ${eval:"0.602214076 * ${C} * ${L} * ${L} * ${H}"}
   - Particle:
       type: "Cl"
       mass: 35.453 # amu
       charge: -1.0 # e
-      count: ${eval:"0.602214076 * ${C} * ${system.L} * ${system.L} * ${H}"}
+      count: ${eval:"0.602214076 * ${C} * ${L} * ${L} * ${H}"}
   - Dipole:
       type_plus: "Ip"
       type_minus: "Im"
       type_ghost: "G"
       length: ${eval:"${pz} / 48.032047"}  # nm
-      ghost_count: 3
+      ghost_count: 1
       mass: 18.01528 # amu
       charge: 1.0 # e
-      count: ${eval:"0.602214076 * ${Cz} * ${system.L} * ${system.L} * ${H}"}
+      count: ${eval:"0.602214076 * ${Cz} * ${L} * ${L} * ${H}"}
   - Particle:
       type: "Wb"
       mass: 1.0 # amu
-      charge: ${eval:"${sigma} * ${system.L} * ${system.L} / 256 / 0.1602"} # e
+      # charge: ${eval:"${sigma} * 1e-3 * ${L} * ${L} / ${N_wall} / 0.1602"} # e
+      charge: -1.0
       z: 0.0 # nm
-      count: 256
+      count: ${N_wall}
       static: true
   - Particle:
       type: "Wt"
       mass: 1.0 # amu
-      charge: ${eval:"${sigma} * ${system.L} * ${system.L} / 256 / 0.1602"} # e
+      # charge: ${eval:"${sigma} * 1e-3 * ${L} * ${L} / ${N_wall} / 0.1602"} # e
+      charge: -1.0
       z: ${H} # nm
-      count: 256
+      count: ${N_wall}
       static: true
-
-r_Na: 0.1
-r_Cl: 0.18
-r_IpmG: 0.15
 
 pairs:
   # ion-ion interactions
@@ -110,18 +120,32 @@ pairs:
       - kind: ewald
 
   # ion-dipole interactions
-  - types: ["Na", "(Ip, Im)"]
+  - types: ["Na", "Ip"]
     forces:
       - kind: hard_sphere
         r1: ${r_Na}
-        r2: ${r_IpmG}
+        r2: ${r_Ip}
       - kind: ewald
 
-  - types: ["Cl", "(Ip, Im)"]
+  - types: ["Na", "Im"]
+    forces:
+      - kind: hard_sphere
+        r1: ${r_Na}
+        r2: ${r_Im}
+      - kind: ewald
+
+  - types: ["Cl", "Ip"]
     forces:
       - kind: hard_sphere
         r1: ${r_Cl}
-        r2: ${r_IpmG}
+        r2: ${r_Ip}
+      - kind: ewald
+
+  - types: ["Cl", "Im"]
+    forces:
+      - kind: hard_sphere
+        r1: ${r_Cl}
+        r2: ${r_Im}
       - kind: ewald
 
 
@@ -129,43 +153,57 @@ pairs:
     forces:
       - kind: hard_sphere
         r1: ${r_Na}
-        r2: ${r_IpmG}
+        r2: ${r_G}
 
 
   - types: ["Cl", "G"]
     forces:
       - kind: hard_sphere
         r1: ${r_Cl}
-        r2: ${r_IpmG}
+        r2: ${r_G}
 
   # dipole-dipole interactions
   - types: [Ip, Ip]
     forces:
       - kind: hard_sphere
-        r1: ${r_IpmG}
-        r2: ${r_IpmG}
+        r1: ${r_Ip}
+        r2: ${r_Ip}
       - kind: ewald
 
   - types: [Im, Im]
     forces:
       - kind: hard_sphere
-        r1: ${r_IpmG}
-        r2: ${r_IpmG}
+        r1: ${r_Im}
+        r2: ${r_Im}
       - kind: ewald
 
   - types: [Ip, Im]
     forces:
       - kind: hard_sphere
-        r1: ${r_IpmG}
-        r2: ${r_IpmG}
+        r1: ${r_Ip}
+        r2: ${r_Im}
         exclude_intermol: true
       - kind: ewald
 
-  - types: ["(Ip, Im, G)", "G"]
+  - types: ["Ip", "G"]
     forces:
       - kind: hard_sphere
-        r1: ${r_IpmG}
-        r2: ${r_IpmG}
+        r1: ${r_Ip}
+        r2: ${r_G}
+        exclude_intermol: true
+
+  - types: ["Im", "G"]
+    forces:
+      - kind: hard_sphere
+        r1: ${r_Im}
+        r2: ${r_G}
+        exclude_intermol: true
+
+  - types: ["G", "G"]
+    forces:
+      - kind: hard_sphere
+        r1: ${r_G}
+        r2: ${r_G}
         exclude_intermol: true
 
   # ion/dipole-wall interactions
@@ -174,6 +212,19 @@ pairs:
       - kind: ewald
 
   - types: ["(Na, Cl, Ip, Im)", "Wt"]
+    forces:
+      - kind: ewald
+
+  # Wall-wall interactions
+  - types: ["Wb", "Wb"]
+    forces:
+      - kind: ewald
+
+  - types: ["Wt", "Wt"]
+    forces:
+      - kind: ewald
+
+  - types: ["Wb", "Wt"]
     forces:
       - kind: ewald
 
@@ -197,14 +248,32 @@ one_body:
         style: top
         r_wall: ${r_Cl}
 
-  - type: "(Ip, Im, G)"
+  - type: "Ip"
     forces:
       - kind: hard_wall
         style: bottom
-        r_wall: ${r_IpmG}
+        r_wall: ${r_Ip}
       - kind: hard_wall
         style: top
-        r_wall: ${r_IpmG}
+        r_wall: ${r_Ip}
+
+  - type: "Im"
+    forces:
+      - kind: hard_wall
+        style: bottom
+        r_wall: ${r_Im}
+      - kind: hard_wall
+        style: top
+        r_wall: ${r_Im}
+
+  - type: "G"
+    forces:
+      - kind: hard_wall
+        style: bottom
+        r_wall: ${r_G}
+      - kind: hard_wall
+        style: top
+        r_wall: ${r_G}
 
 sampler:
   actions:

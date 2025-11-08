@@ -5,7 +5,7 @@ System class for managing atoms, geometry, and ensemble parameters in Monte Carl
 import numpy as np
 from typing import Optional, List, Tuple, Union
 from .units import Units
-from .ewald import EwaldHandler
+from .ewald_handler import EwaldHandler
 from .molecule import Molecule
 
 
@@ -108,6 +108,7 @@ class System:
         self.types = np.zeros(self.capacity, dtype=np.int32)
         self.names = np.empty(self.capacity, dtype="U10")
         self.molecule_ids = np.zeros(self.capacity, dtype=np.int32)
+        self.statics = np.zeros(self.capacity, dtype=bool)
 
     def _resize_arrays(self, new_capacity: int) -> None:
         """Resize all arrays to new capacity."""
@@ -121,6 +122,7 @@ class System:
         new_types = np.zeros(new_capacity, dtype=np.int32)
         new_names = np.empty(new_capacity, dtype="U10")
         new_molecule_ids = np.zeros(new_capacity, dtype=np.int32)
+        new_statics = np.zeros(new_capacity, dtype=bool)
 
         # Copy existing data
         copy_size = min(old_capacity, new_capacity)
@@ -130,6 +132,7 @@ class System:
         new_types[:copy_size] = self.types[:copy_size]
         new_names[:copy_size] = self.names[:copy_size]
         new_molecule_ids[:copy_size] = self.molecule_ids[:copy_size]
+        new_statics[:copy_size] = self.statics[:copy_size]
 
         # Update arrays
         self.charges = new_charges
@@ -138,6 +141,7 @@ class System:
         self.types = new_types
         self.names = new_names
         self.molecule_ids = new_molecule_ids
+        self.statics = new_statics
 
     def add_molecule(self, molecule: Molecule) -> int:
         """
@@ -155,8 +159,8 @@ class System:
 
         # Add all particles from the molecule
         particles = molecule.get_particles()
-        for position, type_id, name, charge, mass in particles:
-            self._add_atom(position, type_id, name, charge, mass, molecule_id)
+        for position, type_id, name, charge, mass, static in particles:
+            self._add_atom(position, type_id, name, charge, mass, molecule_id, static)
 
         return molecule_id
 
@@ -168,6 +172,7 @@ class System:
         charge: float = 0.0,
         mass: float = 1.0,
         molecule_id: int = -1,
+        static: bool = False,
     ) -> int:
         """
         Internal method to add an atom to the system.
@@ -179,6 +184,7 @@ class System:
             charge: Atom charge
             mass: Atom mass
             molecule_id: ID of the molecule this atom belongs to
+            static: Whether the atom is static
 
         Returns:
             Index of the added atom
@@ -195,6 +201,7 @@ class System:
         self.charges[atom_id] = charge
         self.masses[atom_id] = mass
         self.molecule_ids[atom_id] = molecule_id
+        self.statics[atom_id] = static
 
         self.N_atoms += 1
 
@@ -230,6 +237,9 @@ class System:
             self.molecule_ids[atom_id : self.N_atoms - 1] = self.molecule_ids[
                 atom_id + 1 : self.N_atoms
             ]
+            self.statics[atom_id : self.N_atoms - 1] = self.statics[
+                atom_id + 1 : self.N_atoms
+            ]
 
         # Zero out the last position
         self.positions[self.N_atoms - 1] = 0.0
@@ -238,6 +248,7 @@ class System:
         self.charges[self.N_atoms - 1] = 0.0
         self.masses[self.N_atoms - 1] = 0.0
         self.molecule_ids[self.N_atoms - 1] = 0
+        self.statics[self.N_atoms - 1] = False
 
         self.N_atoms -= 1
 
@@ -264,6 +275,7 @@ class System:
             self.names[: self.N_atoms],
             self.charges[: self.N_atoms],
             self.masses[: self.N_atoms],
+            self.statics[: self.N_atoms],
         )
 
     def apply_pbc(self, position: np.ndarray) -> np.ndarray:
@@ -347,7 +359,7 @@ class System:
 
     def get_density(self) -> float:
         """Get the number density (atoms per unit volume)."""
-        return self.N_atoms / self.get_volume() if self.N_atoms > 0 else 0.0
+        return self.N_molecules / self.get_volume() if self.N_molecules > 0 else 0.0
 
     def get_molecule_atoms(self, molecule_id: int) -> List[int]:
         """

@@ -1,9 +1,16 @@
 # Test configuration with dipole molecules mixed with particles
 experiment:
   # name: "ions_dipole_disp_${sampler.max_displacement}_1M_steps"
-  name: "ions_dipole_test_1M_steps"
-  results_dir: "results"
+  name: "ions_dipole_prod"
+  results_dir: "results_prod"
   description: "Mixed system of ions and dipoles in NVT ensemble"
+
+# Control parameters
+C: 0.01
+Cz: 0.1
+H: 3.0 # nm
+pz: 27.6 # D
+sigma: -0.04 # C/m^2
 
 units:
   system: "standard"
@@ -16,23 +23,25 @@ simulation:
 system:
   # n_atoms: 256  # This will be used for counts or fractions, actual atom count may differ
   initial_capacity: 2048
-  init:
+  non_static_init:
     mode: "random"
-    min_distance: 0.4  # Increased to prevent overlaps
-    padding: [0.0, 0.0, 0.4]  # Increased padding in all directions
-  H: 5.0 # nm
+    min_distance: 0.9  # Increased to prevent overlaps
+    padding: [0.0, 0.0, 0.5]  # Increased padding in all directions
+  static_init:
+    mode: "uniform"
+  L: 20.0 # nm
   box:
-    - 20
-    - 20
-    - ${system.H}
+    - ${system.L}
+    - ${system.L}
+    - ${H}
   pbc: [true, true, false]
 
 ewald:
   # Optimal Ewald parameters calculated based on desired accuracy (eps) and system properties
-  eps: 1e-4
-  real_cut: ${eval:"min(${system.box[0]}, ${system.box[1]}, ${system.H}) / 2.0"}
+  eps: 1e-3
+  real_cut: ${eval:"min(${system.box[0]}, ${system.box[1]}, ${H}) / 2.0"}
   alpha: ${eval:"sqrt(-log(${ewald.eps})) / ${ewald.real_cut}"}
-  n_c: ${eval:"ceil(2 * sqrt(${ewald.alpha} * (-log(${ewald.eps}))) * min(${system.box[0]}, ${system.box[1]}, ${system.H}) / (2 * pi))"}
+  n_c: ${eval:"ceil(2 * sqrt(${ewald.alpha} * (-log(${ewald.eps}))) * min(${system.box[0]}, ${system.box[1]}, ${H}) / (2 * pi))"}
 
   dielectric: 78.0
   z_scale_factor: 4.0
@@ -43,21 +52,35 @@ types:
       type: "Na"
       mass: 39.0983 # amu
       charge: 1.0 # e
-      count: ${eval:"0.602214076 * 0.05 * 400 * ${system.H}"}
+      count: ${eval:"0.602214076 * ${C} * ${system.L} * ${system.L} * ${H}"}
   - Particle:
       type: "Cl"
       mass: 35.453 # amu
       charge: -1.0 # e
-      count: ${eval:"0.602214076 * 0.05 * 400 * ${system.H}"}
+      count: ${eval:"0.602214076 * ${C} * ${system.L} * ${system.L} * ${H}"}
   - Dipole:
       type_plus: "Ip"
       type_minus: "Im"
       type_ghost: "G"
-      length: 0.28  # nm
-      ghost_count: 0
+      length: ${eval:"${pz} / 48.032047"}  # nm
+      ghost_count: 3
       mass: 18.01528 # amu
-      charge: 0.75 # e
-      count: ${eval:"0.602214076 * 0.5 * 400 * ${system.H}"}
+      charge: 1.0 # e
+      count: ${eval:"0.602214076 * ${Cz} * ${system.L} * ${system.L} * ${H}"}
+  - Particle:
+      type: "Wb"
+      mass: 1.0 # amu
+      charge: ${eval:"${sigma} * ${system.box[0]} * ${system.box[0]} / 256 / 0.1602"} # e
+      z: 0.0 # nm
+      count: 256
+      static: true
+  - Particle:
+      type: "Wt"
+      mass: 1.0 # amu
+      charge: ${eval:"${sigma} * ${system.box[0]} * ${system.box[0]} / 256 / 0.1602"} # e # e
+      z: ${system.H} # nm
+      count: 256
+      static: true
 
 r_Na: 0.1
 r_Cl: 0.18
@@ -145,13 +168,17 @@ pairs:
         r2: ${r_IpmG}
         exclude_intermol: true
 
-one_body:
-  - type: "(Na, Cl, Ip, Im, G)"
+  # ion/dipole-wall interactions
+  - types: ["(Na, Cl, Ip, Im)", "Wb"]
     forces:
-      - kind: electric_field
-        voltage: 0.3  # V
-        direction: up
+      - kind: ewald
 
+  - types: ["(Na, Cl, Ip, Im)", "Wt"]
+    forces:
+      - kind: ewald
+
+
+one_body:
   - type: "Na"
     forces:
       - kind: hard_wall

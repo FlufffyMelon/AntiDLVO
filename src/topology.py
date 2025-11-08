@@ -91,7 +91,7 @@ class Topology:
             - force_on_i: (3,) net force on the particle from considered neighbors
             - virial_scalar: float of the sum of the pair virial contributions sum_j r_ij · F_ij
         """
-        positions, molecule_ids, types, names, charges, masses = (
+        positions, molecule_ids, types, names, charges, masses, statics = (
             system.get_active_atoms()
         )
         if system.N_atoms == 0:
@@ -302,10 +302,11 @@ class Topology:
             kspace_energy = system.ewald_handler.compute_total_kspace_energy()
 
             # Self-energy correction
-            positions, molecule_ids, types, names, charges, masses = (
+            positions, molecule_ids, types, names, charges, masses, statics = (
                 system.get_active_atoms()
             )
-            self_energy = system.ewald_handler.compute_total_self_energy(charges)
+            # self_energy = system.ewald_handler.compute_total_self_energy(charges)
+            self_energy = 0.0
 
             # Dipole correction for slab geometry
             dipole_energy = system.ewald_handler.compute_dipole_correction(
@@ -326,7 +327,7 @@ class Topology:
         if system.N_atoms <= 1:
             return 0.0, 0.0
 
-        _, molecule_ids, types, _, charges, _ = system.get_active_atoms()
+        _, molecule_ids, types, _, charges, _, _ = system.get_active_atoms()
         energy_total = 0.0
         virial_total = 0.0
 
@@ -398,7 +399,7 @@ class Topology:
     ) -> float:
         if len(atom_indices) == 0:
             return 0.0, 0.0, 0.0, 0.0
-        positions, molecule_ids, types, names, charges, masses = (
+        positions, molecule_ids, types, names, charges, masses, statics = (
             system.get_active_atoms()
         )
         old_positions = positions[atom_indices, :].copy()
@@ -439,7 +440,11 @@ class Topology:
 
             # Dipole correction for slab geometry
             delta_dipole_energy = system.ewald_handler.delta_dipole_correction(
-                new_positions, old_positions, charges[atom_indices], system.get_volume()
+                new_positions,
+                old_positions,
+                charges[atom_indices],
+                system.get_volume(),
+                np.sum(charges),
             )
 
             delta_energy += delta_kspace_energy + delta_dipole_energy
@@ -455,9 +460,9 @@ class Topology:
     ) -> float:
         # Energy of insertion
         delta_energy, _, delta_virial = self._single_pair_energy_forces_virial(
-            position,
-            int(atom_type),
-            float(charge),
+            positions,
+            atom_types,
+            charges,
             system,
             indices=None,
         )
@@ -473,7 +478,7 @@ class Topology:
 
             # Dipole correction for slab geometry
             delta_dipole_energy = system.ewald_handler.delta_dipole_correction(
-                position, None, charge, system.get_volume()
+                position, None, charge, system.get_volume(), np.sum(charges)
             )
 
             delta_energy += delta_kspace_energy
@@ -486,7 +491,7 @@ class Topology:
         """Compute single-atom energy/virial for deletion and store negative deltas for caches."""
         if atom_id >= system.N_atoms or atom_id < 0:
             raise IndexError(f"Atom index {atom_id} out of range")
-        positions, molecule_ids, types, names, charges, masses = (
+        positions, molecule_ids, types, names, charges, masses, statics = (
             system.get_active_atoms()
         )
 
@@ -516,7 +521,11 @@ class Topology:
 
             # Dipole correction for slab geometry
             delta_dipole_energy = system.ewald_handler.delta_dipole_correction(
-                None, positions[atom_id], charges[atom_id], system.get_volume()
+                None,
+                positions[atom_id],
+                charges[atom_id],
+                system.get_volume(),
+                np.sum(charges),
             )
 
             delta_energy += delta_kspace_energy
@@ -623,7 +632,7 @@ class Topology:
         if not types_with_wall:
             return None
 
-        positions, molecule_ids, types, names, charges, masses = (
+        positions, molecule_ids, types, names, charges, masses, statics = (
             system.get_active_atoms()
         )
         if system.N_atoms == 0:

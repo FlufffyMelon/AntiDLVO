@@ -255,7 +255,7 @@ def main():
     # )
     plt.title(
         f"Number density: {', '.join(args.species)}\n"
-        f"C: {config['C']}, Cz: {config['Cz']}, H: {config['H']}, psi: {config['psi']}, pz: {config['pz']}"
+        f"C: {config['C']}, Cz: {config['Cz']}, H: {config['H']}, sigma: {config['sigma']}, pz: {config['pz']}"
     )
     plt.grid(True, alpha=0.3)
     plt.legend()

@@ -4,18 +4,13 @@ Consolidates helpers used by mc_main.
 """
 
 import numpy as np
+import itertools
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Any
-from omegaconf import OmegaConf
+from omegaconf import OmegaConf, ListConfig, DictConfig
+from tqdm import tqdm
 
-try:
-    # For robust isinstance checks with OmegaConf containers
-    from omegaconf import ListConfig, DictConfig  # type: ignore
-except Exception:  # pragma: no cover
-    ListConfig = tuple()  # fallback to avoid NameError; not used if import works
-    DictConfig = tuple()
-
-from .ewald import EwaldHandler
+from .ewald_handler import EwaldHandler
 from .system import System
 from .topology import Topology
 from .sampler import Sampler
@@ -55,6 +50,7 @@ def load_config(config_file: str, overrides: Optional[List[str]] = None):
                 "atan": math.atan,
                 "ceil": math.ceil,
                 "floor": math.floor,
+                "round": round,
                 "abs": abs,
                 "min": min,
                 "max": max,
@@ -220,7 +216,8 @@ def setup_initial_configuration(
                 "type": "Na",
                 "mass": float,
                 "charge": float,
-                "count": int
+                "count": int,
+                "static": bool
             }
         },
         {
@@ -232,7 +229,8 @@ def setup_initial_configuration(
                 "ghost_count": int,
                 "mass": float,
                 "charge": float,
-                "count": int
+                "count": int,
+                "static": bool
             }
         }
     ]
@@ -242,7 +240,8 @@ def setup_initial_configuration(
 
     # Count total molecules and process the specs
     total_molecules = 0
-    processed_specs = []
+    processed_static_specs = []
+    processed_non_static_specs = []
 
     for i, spec_entry in enumerate(type_specs):
         # Create local copy to avoid modifying the original
@@ -254,7 +253,9 @@ def setup_initial_configuration(
         elif isinstance(local_spec_entry, DictConfig):
             local_spec_entry = OmegaConf.to_container(local_spec_entry, resolve=True)
         else:
-            continue
+            raise ValueError(
+                f"Incorrect molecule specification type: {type(local_spec_entry)}"
+            )
 
         # Handle the nested dictionary structure
         if "Particle" in local_spec_entry and local_spec_entry["Particle"]:
@@ -268,7 +269,9 @@ def setup_initial_configuration(
             if isinstance(spec, DictConfig):
                 spec = OmegaConf.to_container(spec, resolve=True)
         else:
-            raise ValueError(f"Unknown molecule type: {local_spec_entry.keys()[0]}")
+            raise ValueError(
+                f"Unknown molecule type: {list(local_spec_entry.keys())[0]}"
+            )
 
         # Get count and add to total
         count = int(spec.get("count", 0))
@@ -276,38 +279,59 @@ def setup_initial_configuration(
             continue
 
         total_molecules += count
-        processed_specs.append((molecule_type, spec, count))
+        if spec.get("static"):
+            processed_static_specs.append((molecule_type, spec, count))
+        else:
+            processed_non_static_specs.append((molecule_type, spec, count))
 
     if total_molecules <= 0:
         return
 
-    # Determine initialization mode
-    init_mode = None
-    if cfg is not None and "system" in cfg and "init" in cfg.system:
-        init_mode = cfg.system.init.get("mode")
-        min_distance = float(cfg.system.init.get("min_distance"))
-        pad_val = cfg.system.init.get("padding")
-        try:
-            pad_resolved = OmegaConf.to_container(pad_val, resolve=True)
-        except Exception:
-            pad_resolved = pad_val
+    # Determine static initialization mode
+    static_init_mode = None
+    if cfg is not None and "system" in cfg and "static_init" in cfg.system:
+        static_init_mode = cfg.system.static_init.get("mode")
+    static_init_mode = static_init_mode or "uniform"
+
+    if static_init_mode == "uniform":
+        _init_static_uniform_configuration(
+            system, processed_static_specs, type_name_to_id
+        )
+    # elif static_init_mode == "random":
+    #     _init_static_random_configuration(
+    #         system, processed_non_static_specs, type_name_to_id, min_distance, padding
+    #     )
+    else:
+        raise ValueError(f"Unknown static init mode: {static_init_mode}")
+
+    # Determine non-static initialization mode
+    non_static_init_mode = None
+    if cfg is not None and "system" in cfg and "non_static_init" in cfg.system:
+        non_static_init_mode = cfg.system.non_static_init.get("mode")
+        min_distance = float(cfg.system.non_static_init.get("min_distance"))
+        pad_val = cfg.system.non_static_init.get("padding")
+        pad_resolved = OmegaConf.to_container(pad_val, resolve=True)
         pad_arr = np.array(list(pad_resolved)[:3], dtype=float)
         # Clamp to valid range [0, box/2)
         box = system.box
         max_pad = 0.5 * box - 1e-9
         padding = np.clip(pad_arr, 0.0, max_pad)
-    init_mode = init_mode or "random"
+    non_static_init_mode = non_static_init_mode or "random"
 
-    if init_mode == "uniform":
-        _init_uniform_configuration(system, processed_specs, type_name_to_id, padding)
-    elif init_mode == "SCC":
-        _init_scc_configuration(system, processed_specs, type_name_to_id, padding)
-    elif init_mode == "random":
+    if non_static_init_mode == "uniform":
+        _init_uniform_configuration(
+            system, processed_non_static_specs, type_name_to_id, padding
+        )
+    elif non_static_init_mode == "SCC":
+        _init_scc_configuration(
+            system, processed_non_static_specs, type_name_to_id, padding
+        )
+    elif non_static_init_mode == "random":
         _init_random_configuration(
-            system, processed_specs, type_name_to_id, min_distance, padding
+            system, processed_non_static_specs, type_name_to_id, min_distance, padding
         )
     else:
-        raise ValueError(f"Unknown init mode: {init_mode}")
+        raise ValueError(f"Unknown non-static init mode: {non_static_init_mode}")
 
     if system.ewald_handler:
         system.ewald_handler.update_structure_factors(
@@ -348,9 +372,15 @@ def _create_molecule(
         name = spec.get("name", type_name) or type_name
         mass = float(spec.get("mass", 1.0))
         charge = float(spec.get("charge", 0.0))
+        static = bool(spec.get("static", False))
 
         return Particle(
-            position=position, type_id=type_id, name=name, charge=charge, mass=mass
+            position=position,
+            type_id=type_id,
+            name=name,
+            charge=charge,
+            mass=mass,
+            static=static,
         )
 
     elif molecule_type == "Dipole":
@@ -377,6 +407,7 @@ def _create_molecule(
         name = spec.get("name", "dipole") or "dipole"
         mass = float(spec.get("mass", 1.0))
         charge = float(spec.get("charge", 1.0))
+        static = bool(spec.get("static", False))
 
         # Random orientation for the dipole
         phi = np.random.random() * 2 * np.pi
@@ -402,10 +433,45 @@ def _create_molecule(
             charge=charge,
             mass=mass,
             ghost_count=ghost_count,
+            static=static,
         )
 
     else:
         raise ValueError(f"Unknown molecule type: {molecule_type}")
+
+
+def _init_static_uniform_configuration(
+    system: System,
+    processed_static_specs: List[Tuple[str, dict, int]],
+    type_name_to_id: Dict[str, int],
+):
+    """Initialize uniform grid configuration with molecules."""
+    box = system.box
+
+    # For each type specification, create and add molecules
+    for molecule_type, spec, count in processed_static_specs:
+        assert round(count**0.5) ** 2 == count, (
+            f"Number of {spec.get('type', '')} must be a perfect square"
+        )
+
+        n = round(count**0.5)
+        ax, ay, _ = box / n
+        z = spec.get("z", None)
+        if z is None:
+            raise ValueError(
+                f"z must be specified for {molecule_type} because it is a wall"
+            )
+        for i in range(n):
+            for j in range(n):
+                position = np.array([i * ax, j * ay, z])
+
+                # Create a molecule to test (without adding it)
+                molecule = _create_molecule(
+                    position, molecule_type, spec, type_name_to_id
+                )
+
+                # Add the molecule to the system
+                system.add_molecule(molecule)
 
 
 def _init_uniform_configuration(
@@ -568,8 +634,9 @@ def _init_random_configuration(
     min_dist = np.inf
 
     # For each type specification, create and add molecules
-    for molecule_type, spec, count in processed_specs:
-        for _ in range(count):
+    for i, (molecule_type, spec, count) in enumerate(processed_specs):
+        print(f"Processing spec {i + 1}/{len(processed_specs)}")
+        for _ in tqdm(range(count), desc="Count"):
             placed = False
             attempts = 0
 
@@ -578,13 +645,9 @@ def _init_random_configuration(
                 position = origin + np.random.random(3) * eff_L
 
                 # Create a molecule to test (without adding it)
-                try:
-                    molecule = _create_molecule(
-                        position, molecule_type, spec, type_name_to_id
-                    )
-                except ValueError as e:
-                    print(f"Error creating molecule: {e}")
-                    break
+                molecule = _create_molecule(
+                    position, molecule_type, spec, type_name_to_id
+                )
 
                 # Check if we can perform energy check
                 too_close = False
@@ -593,7 +656,7 @@ def _init_random_configuration(
                 molecule_particles = molecule.get_particles()
 
                 # Check each particle in the molecule against existing atoms
-                for particle_pos, type_id, _, _, _ in molecule_particles:
+                for particle_pos, _, _, _, _, _ in molecule_particles:
                     # Check distance to other particles
                     if system.N_atoms > 0:
                         # Get distances using the exact same method as in topology._single_pair_energy_forces_virial
@@ -626,19 +689,10 @@ def _init_random_configuration(
                     system.add_molecule(molecule)
                     placed = True
 
-                attempts += 1
+            attempts += 1
 
             if not placed:
-                # Fallback: place anyway (may be close)
                 print(f"Failed to place molecule: {molecule_type}")
-                # position = origin + np.random.random(3) * eff_L
-                # try:
-                #     molecule = _create_molecule(
-                #         position, molecule_type, spec, type_name_to_id
-                #     )
-                #     system.add_molecule(molecule)
-                # except ValueError as e:
-                #     print(f"Error creating molecule in fallback: {e}")
 
     print(f"min_dist: {min_dist}")
 
@@ -674,6 +728,7 @@ def _configure_pair_force(force_name: str, params: dict, units: Units):
         exclude_intermol = params.get("exclude_intermol", False)
 
         from .forces.coulomb import Coulomb
+
         return Coulomb(
             units=units,
             cutoff=cutoff,
@@ -758,7 +813,9 @@ def check_initial_configuration_energy(system: System, topology: Topology) -> No
     print("\n====== INITIAL CONFIGURATION ENERGY CHECK ======")
 
     # Get all atoms
-    positions, molecule_ids, types, names, charges, masses = system.get_active_atoms()
+    positions, molecule_ids, types, names, charges, masses, statics = (
+        system.get_active_atoms()
+    )
 
     # Check particle-particle overlaps
     print("\nChecking for particle-particle overlaps...")
@@ -980,7 +1037,9 @@ def create_topology(cfg, units: Units) -> Topology:
 
     # Print registered types
     print("\nRegistered Types:")
+    types_counter = 0
     for type_id, type_name in topology.type_id_to_name.items():
+        types_counter += 1
         props = topology.type_properties.get(type_id, {})
         mass = props.get("mass", "N/A")
         charge = props.get("charge", "N/A")
@@ -988,13 +1047,48 @@ def create_topology(cfg, units: Units) -> Topology:
 
     # Print pair interactions
     print("\nPair Interactions:")
+    pair_interactions_counter = 0
     for (type1_id, type2_id), forces in topology.interactions.items():
+        pair_interactions_counter += 1
         type1_name = topology.type_id_to_name.get(type1_id, f"Type{type1_id}")
         type2_name = topology.type_id_to_name.get(type2_id, f"Type{type2_id}")
         force_names = [f.__class__.__name__ for f in forces]
         print(
             f"  {type1_name}({type1_id}) - {type2_name}({type2_id}): {', '.join(force_names)}"
         )
+
+    print(f"pair_interactions_counter: {pair_interactions_counter}")
+    # Include self-pairs: expected unique pairs with repetition
+    type_ids_sorted = sorted(topology.type_id_to_name.keys())
+    expected_pairs_list = list(
+        itertools.combinations_with_replacement(type_ids_sorted, 2)
+    )
+    expected_count = len(expected_pairs_list)
+    if pair_interactions_counter != expected_count:
+        print(
+            f"Warning: {pair_interactions_counter} pair interactions found, expected {expected_count}"
+        )
+        expected_set = set(expected_pairs_list)
+        present_set = set(topology.interactions.keys())
+        # Missing pairs (by name)
+        missing = []
+        for i, j in expected_pairs_list:
+            key = (i, j)
+            if key not in present_set:
+                name_i = topology.type_id_to_name.get(i, f"Type{i}")
+                name_j = topology.type_id_to_name.get(j, f"Type{j}")
+                missing.append(f"{name_i}-{name_j}")
+        if missing:
+            print(f"Warning: Missing pair interactions for: {', '.join(missing)}")
+        # Extra pairs (by name)
+        extra = []
+        for i, j in present_set:
+            if (i, j) not in expected_set:
+                name_i = topology.type_id_to_name.get(i, f"Type{i}")
+                name_j = topology.type_id_to_name.get(j, f"Type{j}")
+                extra.append(f"{name_i}-{name_j}")
+        if extra:
+            print(f"Warning: Extra pair interactions for: {', '.join(extra)}")
 
     # Print one-body forces
     print("\nOne-Body Forces:")

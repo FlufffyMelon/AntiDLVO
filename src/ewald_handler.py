@@ -62,7 +62,8 @@ class EwaldHandler:
         self.lB_star: Optional[float] = None
 
         # Dipole correction for slab geometry
-        self.dipole_z: float = 0.0  # Total z-component of dipole moment
+        self.dipole_Mz: float = 0.0  # Total z-component of dipole moment
+        self.dipole_Q_Gz: float = 0.0  # Total z-component of dipole moment squared
 
         self.update_bjerrum_length(1.0)  # Default temperature
 
@@ -161,9 +162,6 @@ class EwaldHandler:
 
         # S_c(k) = sum_i q_i * cos(k·r_i)
         # S_s(k) = sum_i q_i * sin(k·r_i)
-        # Sc = np.sum(q * cos_kr, axis=1)
-        # Ss = np.sum(q * sin_kr, axis=1)
-
         self.Sc = q * cos_kr
         self.Ss = q * sin_kr
 
@@ -175,7 +173,8 @@ class EwaldHandler:
             positions: Particle positions (N, 3)
             charges: Particle charges (N,)
         """
-        self.dipole_z = np.sum(charges * positions[:, 2])
+        self.dipole_Mz = np.sum(charges * positions[:, 2])
+        self.dipole_Q_Gz = np.sum(charges) * np.sum(charges * positions[:, 2]**2)
 
     def update_structure_factors_from_delta(
         self, indices: np.ndarray, delta_S_c: np.ndarray, delta_S_s: np.ndarray
@@ -243,7 +242,10 @@ class EwaldHandler:
         """
         Compute the dipole correction energy for slab geometry.
 
-        U_c = -2π/V * M_z^2, where M_z = sum_i q_i * z_i
+        U_d = 2π/V * M_z^2, where M_z = sum_i q_i * z_i
+        U_sq = 2π/V * Q_t * G_z^2, where Q_t = sum_i q_i and G_z = sum_i q_i * z_i^2
+
+        U_c = U_d - U_sq
 
         Returns:
             Dipole correction energy
@@ -258,7 +260,7 @@ class EwaldHandler:
         scaled_volume = volume * self.z_scale_factor
 
         # Calculate dipole correction
-        energy = -2.0 * np.pi * self.dipole_z**2 / scaled_volume
+        energy = 2.0 * np.pi * (self.dipole_Mz**2 - self.dipole_Q_Gz) / scaled_volume
 
         # Scale by reduced Bjerrum length for LJ units
         if self.lB_star is not None:
@@ -344,6 +346,7 @@ class EwaldHandler:
         old_positions: np.ndarray = None,
         charges: np.ndarray = None,
         volume: float = None,
+        total_charge: float = None,
     ) -> float:
         """
         M_new = M_old - q * z_old + q * z_new
@@ -366,22 +369,28 @@ class EwaldHandler:
         scaled_volume = volume * self.z_scale_factor
 
         if new_positions is not None and old_positions is not None:
-            delta_dipole_z_squared = (
-                2 * self.dipole_z
+            delta_Mz_squared = (
+                2 * self.dipole_Mz
                 + np.sum(charges * (new_positions[:, 2] - old_positions[:, 2]))
             ) * np.sum(charges * (new_positions[:, 2] - old_positions[:, 2]))
+
+            delta_Gz = np.sum(charges * (new_positions[:, 2] ** 2 - old_positions[:, 2] ** 2))
         elif new_positions is not None:
-            delta_dipole_z_squared = (
-                2 * self.dipole_z + np.sum(charges * new_positions[:, 2])
+            delta_Mz_squared = (
+                2 * self.dipole_Mz + np.sum(charges * new_positions[:, 2])
             ) * np.sum(charges * new_positions[:, 2])
+
+            delta_Gz = np.sum(charges * new_positions[:, 2] ** 2)
         elif old_positions is not None:
-            delta_dipole_z_squared = -(
-                2 * self.dipole_z - np.sum(charges * old_positions[:, 2])
+            delta_Mz_squared = -(
+                2 * self.dipole_Mz - np.sum(charges * old_positions[:, 2])
             ) * np.sum(charges * old_positions[:, 2])
+
+            delta_Gz = -np.sum(charges * old_positions[:, 2] ** 2)
         else:
             raise ValueError("Either new_positions or old_positions must be provided")
 
-        delta_dipole_energy = -2.0 * np.pi * delta_dipole_z_squared / scaled_volume
+        delta_dipole_energy = 2.0 * np.pi * (delta_Mz_squared - total_charge * delta_Gz) / scaled_volume
 
         if self.lB_star is not None:
             delta_dipole_energy *= self.lB_star

@@ -264,7 +264,7 @@ class Logger:
         if system.N_atoms == 0:
             return
 
-        positions, molecule_ids, types, names, charges, masses = (
+        positions, molecule_ids, types, names, charges, masses, statics = (
             system.get_active_atoms()
         )
 

@@ -286,8 +286,10 @@ class Sampler:
 
         # Get atoms in this molecule
         atom_indices = self.system.get_molecule_atoms(molecule_id)
-        if len(atom_indices) == 0:
-            return
+
+        while any(self.system.statics[atom_indices]):
+            molecule_id = self.rng.integers(0, self.system.N_molecules)
+            atom_indices = self.system.get_molecule_atoms(molecule_id)
 
         # Generate random displacement
         displacement = (self.rng.random(3) - 0.5) * 2 * self.max_displacement

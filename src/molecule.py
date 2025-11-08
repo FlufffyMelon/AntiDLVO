@@ -40,7 +40,13 @@ class Particle(Molecule):
     """
 
     def __init__(
-        self, position: np.ndarray, type_id: int, name: str, charge: float, mass: float
+        self,
+        position: np.ndarray,
+        type_id: int,
+        name: str,
+        charge: float,
+        mass: float,
+        static: bool = False,
     ):
         """
         Initialize a single particle.
@@ -57,10 +63,20 @@ class Particle(Molecule):
         self.type_id = type_id
         self.charge = charge
         self.mass = mass
+        self.static = static
 
     def get_particles(self) -> List[Tuple[np.ndarray, int, str, float, float]]:
         """Return this particle's data as a single-element list."""
-        return [(self.position, self.type_id, self.name, self.charge, self.mass)]
+        return [
+            (
+                self.position,
+                self.type_id,
+                self.name,
+                self.charge,
+                self.mass,
+                self.static,
+            )
+        ]
 
 
 class Dipole(Molecule):
@@ -82,6 +98,7 @@ class Dipole(Molecule):
         charge: float = 1.0,
         mass: float = 1.0,
         ghost_count: int = 0,
+        static: bool = False,
     ):
         """
         Initialize a dipole molecule.
@@ -117,6 +134,7 @@ class Dipole(Molecule):
         self.charge = float(charge)
         self.mass = float(mass)
         self.ghost_count = int(ghost_count)
+        self.static = static
 
     def get_particles(self) -> List[Tuple[np.ndarray, int, str, float, float]]:
         """Return the particles that make up this dipole."""
@@ -134,6 +152,7 @@ class Dipole(Molecule):
                 self.type_plus_name,
                 self.charge,
                 self.mass,
+                self.static,
             ),
             (
                 negative_pos,
@@ -141,6 +160,7 @@ class Dipole(Molecule):
                 self.type_minus_name,
                 -self.charge,
                 self.mass,
+                self.static,
             ),
         ]
 
@@ -150,6 +170,8 @@ class Dipole(Molecule):
             for i in range(self.ghost_count):
                 # Position along the dipole, starting from the negative end
                 pos = negative_pos + self.orientation * step * (i + 1)
-                particles.append((pos, self.type_ghost, self.type_ghost_name, 0.0, 0.0))
+                particles.append(
+                    (pos, self.type_ghost, self.type_ghost_name, 0.0, 0.0, self.static)
+                )
 
         return particles
