@@ -1,7 +1,7 @@
 # Test configuration with dipole molecules mixed with particles
 experiment:
   name: "ions_dipole"
-  results_dir: "results_prod"
+  results_dir: "results_prod_test"
   description: "Mixed system of ions and dipoles in NVT ensemble"
 
 # Control parameters
@@ -59,12 +59,16 @@ ewald:
   z_scale_factor: 4.0
   dipole_correction: true
 
+  use_gpu: true
+  gpu_device: 0
+
 types:
   - Particle:
       type: "Na"
       mass: 39.0983 # amu
       charge: 1.0 # e
-      count: ${eval:"0.602214076 * ${C} * ${L} * ${L} * ${H}"}
+      # count: ${eval:"0.602214076 * ${C} * ${L} * ${L} * ${H}"}
+      count: ${eval:"0.602214076 * ${C} * ${L} * ${L} * ${H} + 2 * {N_wall}"}
   - Particle:
       type: "Cl"
       mass: 35.453 # amu
@@ -286,5 +290,5 @@ sampler:
 debug: false
 
 logger:
-  log_interval: 100
-  xyz_interval: 100
+  log_interval: 50
+  xyz_interval: 50

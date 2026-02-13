@@ -4,10 +4,10 @@ Topology class for managing force field interactions and calculating energies.
 
 import numpy as np
 from typing import Dict, List, Tuple, Optional
+
 from .forces import *
 from .system import System
 from .units import Units
-from .profiler import Profiler
 
 
 class Topology:
@@ -16,7 +16,7 @@ class Topology:
     and provides methods for energy calculations.
     """
 
-    def __init__(self, units: Units = None, profiler: Optional[Profiler] = None):
+    def __init__(self, units: Units = None):
         """
         Initialize topology.
 
@@ -24,7 +24,6 @@ class Topology:
             units: Units system to use
         """
         self.units = units or Units()
-        self.profiler = profiler or Profiler(enabled=False)
         # Dictionary mapping (type_i, type_j) -> list of Force objects
         self.interactions: Dict[Tuple[int, int], List[Force]] = {}
         # One-body forces by type
@@ -72,15 +71,16 @@ class Topology:
         key = (min(type1, type2), max(type1, type2))
         return self.interactions.get(key, [])
 
-    def _single_pair_energy_forces_virial(
+    def _single_pair_energy_forces(
         self,
+        idx: int,
         position: np.ndarray,
         atom_type: int,
         charge: float,
         system: System,
         indices: Optional[np.ndarray] = None,
         intermol: bool = False,
-    ) -> Tuple[float, np.ndarray, float]:
+    ) -> Tuple[float, np.ndarray]:
         """
         Calculate only PAIR energy, net force on the particle, and virial contributions
         for one particle interacting with other particles (excluding indices as requested).
@@ -91,28 +91,34 @@ class Topology:
             - force_on_i: (3,) net force on the particle from considered neighbors
             - virial_scalar: float of the sum of the pair virial contributions sum_j r_ij · F_ij
         """
-        positions, molecule_ids, types, names, charges, masses, statics = (
-            system.get_active_atoms()
-        )
+        positions, forces, _, types, _, charges, _, _ = system.get_active_atoms()
         if system.N_atoms == 0:
-            return 0.0, np.zeros(3), 0.0
+            return 0.0, np.zeros(3)
 
-        idx_all = np.arange(system.N_atoms)
+        N_atoms = system.N_atoms
+        idx_all = np.arange(N_atoms)
+        mask_valid: np.ndarray
+
         if indices is not None:
+            indices_arr = np.atleast_1d(indices).astype(int, copy=False).ravel()
+            if np.any(indices_arr < 0) or np.any(indices_arr >= N_atoms):
+                raise IndexError("indices contain out-of-range atom ids")
             if intermol:
-                mask_valid = np.isin(idx_all, indices)
+                mask_valid = np.zeros(N_atoms, dtype=bool)
+                mask_valid[indices_arr] = True
             else:
-                mask_valid = ~np.isin(idx_all, indices)
+                mask_valid = np.ones(N_atoms, dtype=bool)
+                mask_valid[indices_arr] = False
         else:
             if intermol:
                 raise ValueError(
                     "exclude_indices must be provided, when intermol is True"
                 )
-            mask_valid = np.ones(system.N_atoms, dtype=bool)
+            mask_valid = np.ones(N_atoms, dtype=bool)
 
         # Valid atoms
         pos_j = positions[mask_valid]
-        types_j = types[mask_valid]
+        types_j = types[mask_valid].astype(int, copy=False)
         charges_j = charges[mask_valid]
 
         # MIC distance vectors to all others for valid atoms
@@ -127,18 +133,24 @@ class Topology:
 
         # Initialize outputs
         energy_scalar = 0.0
-        virial_scalar = 0.0
-        net_force_i = np.zeros(3)
+        # virial_scalar = 0.0
+        forces_i = np.zeros_like(forces)
+        # net_force_i = np.zeros(3)
 
         # Process pairwise interactions
-        unique_pairs = set((int(atom_type), int(t2)) for t2 in np.unique(types_j))
-        for t1, t2 in unique_pairs:
-            forces = self.get_interactions(t1, t2)
+        unique_types = np.unique(types_j)
+        # Indices of valid atoms in the full system arrays
+        idx_valid = idx_all[mask_valid]
+        t1 = int(atom_type)
+        for t2 in unique_types:
+            forces = self.get_interactions(t1, int(t2))
             if not forces:
                 continue
 
             # Mask for this neighbor type
             mask_t = types_j == t2
+            if not np.any(mask_t):
+                continue
             dr_ij_t = dr_ij[mask_t]
             charges_t = charges_j[mask_t]
 
@@ -159,17 +171,21 @@ class Topology:
                     system,
                 )
                 if np.isinf(energy):
-                    return np.inf, np.zeros(3), 0.0
+                    return np.inf, np.zeros(3)
 
                 energy_scalar += energy
-                virial_scalar += np.sum(forces_matrix[: dr_ij_t.shape[0], :] * dr_ij_t)
-                # Force on i is opposite to forces on j from i
-                net_force_i += np.sum(forces_matrix, axis=0)
+                # virial_scalar += np.sum(forces_matrix[: dr_ij_t.shape[0], :] * dr_ij_t)
+                # Force on i atom
+                forces_i[idx] += np.sum(forces_matrix, axis=0)
+                # Force on all j atoms following thrird Newton's law
+                # Map the neighbor-type mask (defined on valid atoms) back to global indices
+                forces_i[idx_valid[mask_t], :] += -forces_matrix
 
-        return energy_scalar, net_force_i, virial_scalar
+        return energy_scalar, forces_i
 
     def _single_one_body_energy_forces(
         self,
+        idx: int,
         position: np.ndarray,
         atom_type: int,
         charge: float,
@@ -179,21 +195,23 @@ class Topology:
         Calculate ONE-BODY energy, net force for a single particle.
         Returns (energy_scalar, force_vector).
         """
+        _, forces, _, _, _, _, _, _ = system.get_active_atoms()
         energy_scalar = 0.0
-        force_vec = np.zeros(3)
+        # force_vec = np.zeros(3)
+        force_matrix = np.zeros_like(forces)
+
         t_i = int(atom_type)
-        if t_i in self.one_body_forces:
-            for ob in self.one_body_forces[t_i]:
-                energy, forces = ob(position, t_i, float(charge), system=system)
-                if np.isinf(energy):
-                    return np.inf, np.zeros(3)
+        for ob in self.one_body_forces.get(t_i, []):
+            energy, forces = ob(position, t_i, float(charge), system=system)
+            if np.isinf(energy):
+                return np.inf, np.zeros(3)
 
-                energy_scalar += energy
-                force_vec += np.sum(forces, axis=0)
+            energy_scalar += energy
+            force_matrix[idx, :] += np.sum(forces, axis=0)
 
-        return energy_scalar, force_vec
+        return energy_scalar, force_matrix
 
-    def _molecule_energy_forces_virial(
+    def _molecule_energy_forces(
         self,
         indices: Optional[np.ndarray],
         types: np.ndarray,
@@ -201,16 +219,18 @@ class Topology:
         system: System,
         new_positions: np.ndarray = None,
         exclude_indices: Optional[np.ndarray] = None,
-    ) -> Tuple[float, np.ndarray, float]:
+    ) -> Tuple[float, np.ndarray]:
         """
         Wrapper that combines pair and one-body contributions for a single particle.
 
         Returns:
             (energy_scalar, force_on_i, virial_scalar)
         """
+        _, forces, molecule_ids, types, _, charges, _, _ = system.get_active_atoms()
+
         energy_scalar = 0.0
-        force_on_i = np.zeros(3)
-        virial_scalar = 0.0
+        forces_on_mol = np.zeros_like(forces)
+        # virial_scalar = 0.0
 
         pair_scalar = 0.0
         intermol_scalar = 0.0
@@ -232,112 +252,82 @@ class Topology:
 
         for i, idx in enumerate(indices):
             # Calculate intramol energy and forces for each atom in the molecule
-            pair_e, pair_force, pair_w = self._single_pair_energy_forces_virial(
+            # pair_e, pair_force, pair_w = self._single_pair_energy_forces(
+            pair_e, pair_forces = self._single_pair_energy_forces(
+                idx,
                 positions[i],
-                types[i],
-                charges[i],
+                types[idx],
+                charges[idx],
                 system,
                 indices=exclude_indices,
                 intermol=False,
             )
 
             # Calculate intermol energy and forces
-            intermol_e, intermol_force, intermol_w = (
-                self._single_pair_energy_forces_virial(
-                    positions[i],
-                    types[i],
-                    charges[i],
-                    system,
-                    indices=indices[i + 1 :],
-                    intermol=True,
-                )
+            # intermol_e, intermol_force, intermol_w = (
+            intermol_e, intermol_forces = self._single_pair_energy_forces(
+                idx,
+                positions[i],
+                types[idx],
+                charges[idx],
+                system,
+                indices=indices[i + 1 :],
+                intermol=True,
             )
 
-            one_e, one_force = self._single_one_body_energy_forces(
-                positions[i], types[i], charges[i], system
+            one_e, one_forces = self._single_one_body_energy_forces(
+                idx, positions[i], types[idx], charges[idx], system
             )
 
-            if np.isinf(pair_e) or np.isinf(one_e):
+            # pair_scalar += pair_e
+            # intermol_scalar += intermol_e
+            # one_scalar += one_e
+
+            energy_scalar += pair_e + intermol_e + one_e
+            forces_on_mol += pair_forces + intermol_forces + one_forces
+            # virial_scalar += pair_w + intermol_w
+
+            if np.isinf(energy_scalar):
                 if new_positions is not None:
                     system.positions[indices, :] = old_positions
 
-                return np.inf, np.zeros(3), 0.0
-
-            pair_scalar += pair_e
-            intermol_scalar += intermol_e
-            one_scalar += one_e
-
-            energy_scalar += pair_e + intermol_e + one_e
-            force_on_i += pair_force + intermol_force + one_force
-            virial_scalar += pair_w + intermol_w
+                return np.inf, np.zeros(3)
 
         if new_positions is not None:
             system.positions[indices, :] = old_positions
 
-        return (
-            energy_scalar,
-            force_on_i,
-            virial_scalar,
-        )
+        return energy_scalar, forces_on_mol
 
     def recompute_caches(self, system: System) -> None:
         """Compute and cache total potential energy and virial.
         Ensures one-body contributions are not halved, while pair contributions are.
         """
-        energy, virial = self.compute_energy_virial(system)
+        energy, forces = self.compute_energy_forces(system)
         system.potential_energy = energy
-        system.virial = virial
+        system.forces = forces
 
-    def compute_energy_virial(self, system: System) -> Tuple[float, float]:
-        """Compute total potential energy and virial using split pair/one-body paths."""
-        energy, virial = self._total_molecule_energy_virial(system)
-
-        if np.isinf(energy):
-            return np.inf, 0.0
-
-        # Add Ewald k-space, self-energy, and dipole correction contributions if enabled
-        ewald_energy = 0.0
-        if system.ewald_handler:
-            # K-space contribution
-            kspace_energy = system.ewald_handler.compute_total_kspace_energy()
-
-            # Self-energy correction
-            positions, molecule_ids, types, names, charges, masses, statics = (
-                system.get_active_atoms()
-            )
-            # self_energy = system.ewald_handler.compute_total_self_energy(charges)
-            self_energy = 0.0
-
-            # Dipole correction for slab geometry
-            dipole_energy = system.ewald_handler.compute_dipole_correction(
-                system.get_volume()
-            )
-
-            ewald_energy += kspace_energy + self_energy + dipole_energy
-
-        return energy + ewald_energy, virial
-
-    def _total_molecule_energy_virial(
+    def _total_molecule_energy_forces(
         self, system: System, molecule_indices: Optional[np.ndarray] = None
-    ) -> Tuple[float, float]:
+    ) -> Tuple[float, np.ndarray]:
         """
         Total energy and virial using j > i optimization.
-        Returns (energy_total, virial_total).
+        Returns (energy_total, forces_total).
         """
         if system.N_atoms <= 1:
             return 0.0, 0.0
 
-        _, molecule_ids, types, _, charges, _, _ = system.get_active_atoms()
+        _, forces, molecule_ids, types, _, charges, _, _ = system.get_active_atoms()
         energy_total = 0.0
-        virial_total = 0.0
+        forces_total = np.zeros_like(forces)
 
         if molecule_indices is None:
             molecule_indices = np.unique(molecule_ids)
 
-        for i, mol_idx in enumerate(molecule_indices):
+        for mol_idx in molecule_indices:
             indices = np.argwhere(molecule_ids == mol_idx).flatten()
             exclude_indices = np.argwhere(molecule_ids < mol_idx).flatten()
-            energy, _, virial = self._molecule_energy_forces_virial(
+            # energy, _, virial = self._molecule_energy_forces(
+            energy, forces = self._molecule_energy_forces(
                 indices,
                 types[indices],
                 charges[indices],
@@ -349,45 +339,43 @@ class Topology:
                 return np.inf, 0.0
 
             energy_total += energy
-            virial_total += virial
+            forces_total += forces
+            # virial_total += virial
 
-        return energy_total, virial_total
+        return energy_total, forces_total
 
-    # def _total_one_body_energy(
-    #     self, system: System, indices: Optional[np.ndarray] = None
-    # ) -> float:
-    #     """
-    #     Total ONE-BODY energy vectorized over positions per type.
-    #     Returns (energy_total).
-    #     """
-    #     if system.N_atoms == 0:
-    #         return 0.0
+    def compute_energy_forces(self, system: System) -> Tuple[float, np.ndarray]:
+        """Compute total potential energy and virial using split pair/one-body paths."""
+        energy, forces = self._total_molecule_energy_forces(system)
 
-    #     if indices is None:
-    #         indices = np.arange(system.N_atoms)
+        if np.isinf(energy):
+            return np.inf, 0.0
 
-    #     positions, molecule_ids, types, names, charges, masses = (
-    #         system.get_active_atoms()
-    #     )
-    #     energy_total = 0.0
-    #     unique_types = np.unique(types[indices])
+        # Add Ewald k-space, self-energy, and dipole correction contributions if enabled
+        positions, _, _, _, _, charges, _, _ = system.get_active_atoms()
+        ewald_energy = 0.0
+        ewald_forces = np.zeros_like(forces)
+        if system.ewald_handler:
+            # K-space contribution
+            kspace_energy, kspace_forces = (
+                system.ewald_handler.compute_total_kspace_energy_forces()
+            )
 
-    #     for t in unique_types:
-    #         t_int = int(t)
-    #         mask_t = types[indices] == t
-    #         pos_t = positions[indices][mask_t]
-    #         q_t = charges[indices][mask_t]
-    #         # Accumulate over all one-body forces for this type
-    #         if t_int in self.one_body_forces:
-    #             for ob in self.one_body_forces[t_int]:
-    #                 energy, _ = ob(pos_t, t_int, q_t, system=system)
-    #                 if np.isinf(energy):
-    #                     # print(f"one_body_energy is inf. z: {pos_t[:, 2]}")
-    #                     return np.inf
+            # Self-energy correction
+            # self_energy = system.ewald_handler.compute_total_self_energy(charges)
+            # self_energy = 0.0
 
-    #                 energy_total += energy
+            # Dipole correction for slab geometry
+            dipole_energy, dipole_forces = (
+                system.ewald_handler.compute_dipole_correction_energy_forces(
+                    positions, charges, system.get_volume()
+                )
+            )
 
-    #     return energy_total
+            ewald_energy += kspace_energy + dipole_energy
+            ewald_forces += kspace_forces + dipole_forces
+
+        return energy + ewald_energy, forces + ewald_forces
 
     def get_energy(self, system: System) -> float:
         if system.potential_energy is None:
@@ -399,13 +387,13 @@ class Topology:
     ) -> float:
         if len(atom_indices) == 0:
             return 0.0, 0.0, 0.0, 0.0
-        positions, molecule_ids, types, names, charges, masses, statics = (
+        positions, forces, molecule_ids, types, names, charges, masses, statics = (
             system.get_active_atoms()
         )
         old_positions = positions[atom_indices, :].copy()
 
         # Energy with old position
-        energy_before, _, virial_before = self._molecule_energy_forces_virial(
+        energy_before, forces_before = self._molecule_energy_forces(
             atom_indices,
             types[atom_indices],
             charges[atom_indices],
@@ -414,7 +402,7 @@ class Topology:
         )
 
         # Energy with new position
-        energy_after, _, virial_after = self._molecule_energy_forces_virial(
+        energy_after, forces_after = self._molecule_energy_forces(
             atom_indices,
             types[atom_indices],
             charges[atom_indices],
@@ -426,30 +414,45 @@ class Topology:
             return np.inf, None, None, None
 
         delta_energy = energy_after - energy_before
-        delta_virial = virial_after - virial_before
+        # delta_virial = virial_after - virial_before
+        delta_forces = forces_after - forces_before
 
         delta_S_c, delta_S_s = 0.0, 0.0
+
         if system.ewald_handler:
             # K-space contribution
-            with self.profiler.measure("translation_kspace"):
-                delta_kspace_energy, delta_S_c, delta_S_s = (
-                    system.ewald_handler.delta_kspace_energy(
-                        new_positions, old_positions, charges[atom_indices]
-                    )
+            delta_kspace_energy, delta_kspace_forces, delta_S_c, delta_S_s = (
+                system.ewald_handler.delta_kspace_energy_forces(
+                    atom_indices,
+                    positions,
+                    new_positions,
+                    charges[atom_indices],
                 )
+            )
 
             # Dipole correction for slab geometry
-            delta_dipole_energy = system.ewald_handler.delta_dipole_correction(
-                new_positions,
-                old_positions,
-                charges[atom_indices],
-                system.get_volume(),
-                np.sum(charges),
+            # delta_dipole_energy = system.ewald_handler.delta_dipole_correction(
+            #     positions,
+            #     charges,
+            #     new_positions,
+            #     old_positions,
+            #     charges[atom_indices],
+            #     system.get_volume(),
+            # )
+            delta_dipole_energy, delta_dipole_forces = (
+                system.ewald_handler.delta_dipole_correction_energy_forces(
+                    positions,
+                    charges,
+                    atom_indices,
+                    new_positions,
+                    system.get_volume(),
+                )
             )
 
             delta_energy += delta_kspace_energy + delta_dipole_energy
+            delta_forces += delta_kspace_forces + delta_dipole_forces
 
-        return delta_energy, delta_virial, delta_S_c, delta_S_s
+        return delta_energy, delta_forces, delta_S_c, delta_S_s
 
     def get_energy_insertion(
         self,
@@ -459,7 +462,7 @@ class Topology:
         system: System,
     ) -> float:
         # Energy of insertion
-        delta_energy, _, delta_virial = self._single_pair_energy_forces_virial(
+        delta_energy, _, delta_virial = self._single_pair_energy_forces(
             positions,
             atom_types,
             charges,
@@ -478,7 +481,12 @@ class Topology:
 
             # Dipole correction for slab geometry
             delta_dipole_energy = system.ewald_handler.delta_dipole_correction(
-                position, None, charge, system.get_volume(), np.sum(charges)
+                positions,
+                charges,
+                position,
+                None,
+                charge,
+                system.get_volume(),
             )
 
             delta_energy += delta_kspace_energy
@@ -491,12 +499,12 @@ class Topology:
         """Compute single-atom energy/virial for deletion and store negative deltas for caches."""
         if atom_id >= system.N_atoms or atom_id < 0:
             raise IndexError(f"Atom index {atom_id} out of range")
-        positions, molecule_ids, types, names, charges, masses, statics = (
+        positions, forces, molecule_ids, types, names, charges, masses, statics = (
             system.get_active_atoms()
         )
 
         # Energy of deletion
-        delta_energy, _, delta_virial = self._single_pair_energy_forces_virial(
+        delta_energy, _, delta_virial = self._single_pair_energy_forces(
             positions[atom_id],
             types[atom_id],
             charges[atom_id],
@@ -521,11 +529,12 @@ class Topology:
 
             # Dipole correction for slab geometry
             delta_dipole_energy = system.ewald_handler.delta_dipole_correction(
+                positions,
+                charges,
                 None,
                 positions[atom_id],
                 charges[atom_id],
                 system.get_volume(),
-                np.sum(charges),
             )
 
             delta_energy += delta_kspace_energy
@@ -536,8 +545,7 @@ class Topology:
 
     def compute_energy_with_tail(self, system: System) -> Dict[str, float]:
         if system.potential_energy is None:
-            with self.profiler.measure("recompute_caches"):
-                self.recompute_caches(system)
+            self.recompute_caches(system)
         density = system.get_density()
         rc = self._get_lj_cutoff()
         energy_tail = 0.0
@@ -556,8 +564,7 @@ class Topology:
 
     def compute_pressure_with_tail(self, system: System) -> Dict[str, float]:
         if system.virial is None:
-            with self.profiler.measure("recompute_caches"):
-                self.recompute_caches(system)
+            self.recompute_caches(system)
         volume = system.get_volume()
         density = system.get_density()
         kbT = (
@@ -578,10 +585,10 @@ class Topology:
 
         # Ewald virial pressure
         pressure_ewald_virial = 0.0
-        if system.ewald_handler:
-            pressure_ewald_virial = system.ewald_handler.compute_pressure_virial(
-                system.get_volume()
-            )
+        # if system.ewald_handler:
+        # pressure_ewald_virial = system.ewald_handler.compute_pressure_virial(
+        #     system.get_volume()
+        # )
 
         # Total pressure
         pressure = pressure_ideal + pressure_pair_virial + pressure_ewald_virial
@@ -619,54 +626,59 @@ class Topology:
         # Identify if any types have an Wall_10_4_3 one-body force
         types_with_wall = False
         for t_id, flist in self.one_body_forces.items():
-            walls = [
-                f
-                for f in flist
-                if isinstance(f, Wall_10_4_3)
-                # if isinstance(f, Wall_10_4_3) or isinstance(f, ElectricField)
-            ]
-            if walls:
+            walls_10_4_3 = [f for f in flist if isinstance(f, Wall_10_4_3)]
+            walls_electric = [f for f in flist if isinstance(f, HardWall)]
+
+            if walls_10_4_3 or walls_electric:
                 types_with_wall = True
                 break
 
         if not types_with_wall:
             return None
 
-        positions, molecule_ids, types, names, charges, masses, statics = (
+        positions, forces, molecule_ids, types, names, charges, masses, statics = (
             system.get_active_atoms()
         )
         if system.N_atoms == 0:
             return None
 
-        # A = float(system.box[0] * system.box[1])
-        # if A <= 0.0:
-        #     return None
+        A = float(system.box[0] * system.box[1])
 
-        Fz_total = []
-        unique_types = np.unique(types)
-        for t in unique_types:
-            t_int = int(t)
-            if t_int not in self.one_body_forces:
-                continue
-            mask_t = types == t
-            pos_t = positions[mask_t]
-            # Accumulate over all one-body forces for this type
-            for ob in self.one_body_forces[t_int]:
-                if isinstance(ob, Wall_10_4_3):
-                    _, force_vec = ob(pos_t, t_int, 0.0, system=system)
+        if walls_10_4_3:
+            Fz_total = []
+            unique_types = np.unique(types)
+            for t in unique_types:
+                t_int = int(t)
+                if t_int not in self.one_body_forces:
+                    continue
+                mask_t = types == t
+                pos_t = positions[mask_t]
+                # Accumulate over all one-body forces for this type
+                for ob in self.one_body_forces[t_int]:
+                    if isinstance(ob, Wall_10_4_3):
+                        _, force_vec = ob(pos_t, t_int, 0.0, system=system)
 
-                    if ob.style == "bottom":
-                        Fz_total.append(force_vec[:, 2])
-                    elif ob.style == "top":
-                        Fz_total.append(-force_vec[:, 2])
+                        if ob.style == "bottom":
+                            Fz_total.append(force_vec[:, 2])
+                        elif ob.style == "top":
+                            Fz_total.append(-force_vec[:, 2])
 
-        if not Fz_total:
-            return None
+            if not Fz_total:
+                return None
 
-        Fz_total = np.concatenate(Fz_total)
-        f_s = np.mean(Fz_total)
+            Fz_total = np.concatenate(Fz_total)
+            f_s = np.mean(Fz_total)
 
-        return f_s
+            return f_s
+        elif walls_electric:
+            bottom_mask = names == "Wb"
+            top_mask = names == "Wt"
+
+            bottom_forces = forces[bottom_mask, 2]
+            top_forces = forces[top_mask, 2]
+            f_s = (np.sum(bottom_forces) - np.sum(top_forces)) / 2
+
+            return f_s / A
 
     def _get_lj_cutoff(self) -> Optional[float]:
         for key, flist in self.interactions.items():

@@ -8,7 +8,6 @@ from .system import System
 from .topology import Topology
 from .units import Units
 from .logger import Logger
-from .profiler import Profiler
 
 
 class Sampler:
@@ -28,7 +27,6 @@ class Sampler:
         insert_type_probabilities: Optional[Dict[int, float]] = None,
         max_volume_scale: float = 0.1,
         debug: bool = False,
-        profiler: Optional[Profiler] = None,
         force_recompute: bool = False,
     ):
         """
@@ -44,7 +42,6 @@ class Sampler:
                 insert_type_probabilities: Optional mapping of type_id to probability for insertions (muVT)
                 max_volume_scale: Maximum relative scale for volume move (delta_max in description)
                 debug: Enable profiling if True
-                profiler: Optional Profiler instance
         """
         self.system = system
         self.topology = topology
@@ -55,7 +52,6 @@ class Sampler:
         self.insert_type_probabilities = insert_type_probabilities
         self.max_volume_scale = max_volume_scale
         self.debug = debug
-        self.profiler = profiler or Profiler(enabled=debug)
         self.force_recompute = bool(force_recompute)
         self._audit_E_before_real: Optional[float] = None
 
@@ -180,45 +176,35 @@ class Sampler:
                 n_steps: Number of MC steps to perform
         """
         for _ in range(n_steps):
-            with self.profiler.measure("step_total"):
-                # Select action
-                with self.profiler.measure("select_action"):
-                    action = self._select_action()
+            # Select action
+            action = self._select_action()
 
-                # Perform action
-                if action == "translate":
-                    with self.profiler.measure("action_translate"):
-                        self._attempt_translation()
-                elif action == "insert":
-                    with self.profiler.measure("action_insert"):
-                        self._attempt_insertion()
-                elif action == "delete":
-                    with self.profiler.measure("action_delete"):
-                        self._attempt_deletion()
-                elif action == "volume":
-                    with self.profiler.measure("action_volume"):
-                        self._attempt_volume_change()
+            # Perform action
+            if action == "translate":
+                self._attempt_translation()
+            elif action == "insert":
+                self._attempt_insertion()
+            elif action == "delete":
+                self._attempt_deletion()
+            elif action == "volume":
+                self._attempt_volume_change()
 
-                self.n_moves += 1
+            self.n_moves += 1
 
-                # Log if needed
-                if (
-                    self.logger
-                    and self.n_moves % self.logger.log_interval == 0
-                    and self.logger.log_interval != -1
-                ):
-                    with self.profiler.measure("log_step"):
-                        self.logger.log_step(
-                            self.n_moves, self.system, self.topology, self
-                        )
+            # Log if needed
+            if (
+                self.logger
+                and self.n_moves % self.logger.log_interval == 0
+                and self.logger.log_interval != -1
+            ):
+                self.logger.log_step(self.n_moves, self.system, self.topology, self)
 
-                if (
-                    self.logger
-                    and self.n_moves % self.logger.xyz_interval == 0
-                    and self.logger.xyz_interval != -1
-                ):
-                    with self.profiler.measure("write_xyz"):
-                        self.logger.write_xyz(self.system, self.n_moves, self.topology)
+            if (
+                self.logger
+                and self.n_moves % self.logger.xyz_interval == 0
+                and self.logger.xyz_interval != -1
+            ):
+                self.logger.write_xyz(self.system, self.n_moves, self.topology)
 
     def _rotate_vector_randomly(self, vectors: np.ndarray) -> np.ndarray:
         """
@@ -313,12 +299,11 @@ class Sampler:
             new_positions = self.system.apply_pbc(old_positions + displacement)
 
         # Calculate the new energy
-        with self.profiler.measure("energy_diff_translate"):
-            energy_diff, delta_virial, delta_S_c, delta_S_s = (
-                self.topology.get_energy_difference_translation(
-                    atom_indices, new_positions, self.system
-                )
+        energy_diff, delta_forces, delta_S_c, delta_S_s = (
+            self.topology.get_energy_difference_translation(
+                atom_indices, new_positions, self.system
             )
+        )
 
         self.n_attempted["translate"] += 1
         self.n_attempted["total"] += 1
@@ -334,28 +319,22 @@ class Sampler:
             )
 
         if accepted:
-            with self.profiler.measure("translate_accepted"):
-                # Update position
-                self.system.positions[atom_indices] = new_positions
-                # Update caches: potential energy and virial
-                if self.system.potential_energy is None or self.system.virial is None:
-                    self.topology.recompute_caches(self.system)
-                else:
-                    self.system.potential_energy += energy_diff
-                    self.system.virial += delta_virial
-                # Update Ewald structure factors if enabled
-                if self.system.ewald_handler:
-                    with self.profiler.measure("ewald_update_structure_factors"):
-                        self.system.ewald_handler.update_structure_factors_from_delta(
-                            atom_indices, delta_S_c, delta_S_s
-                        )
-                    with self.profiler.measure("ewald_update_dipole_moment"):
-                        self.system.ewald_handler.update_dipole_moment(
-                            self.system.positions[: self.system.N_atoms],
-                            self.system.charges[: self.system.N_atoms],
-                        )
-                self.n_accepted["translate"] += 1
-                self.n_accepted["total"] += 1
+            # Update position
+            self.system.positions[atom_indices] = new_positions
+            # Update caches: potential energy and virial
+            if self.system.potential_energy is None or self.system.forces is None:
+                self.topology.recompute_caches(self.system)
+            else:
+                self.system.potential_energy += energy_diff
+                self.system.forces += delta_forces
+
+            # Update Ewald structure factors if enabled
+            if self.system.ewald_handler:
+                self.system.ewald_handler.update_structure_factors_from_delta(
+                    atom_indices, delta_S_c, delta_S_s
+                )
+            self.n_accepted["translate"] += 1
+            self.n_accepted["total"] += 1
 
         if self.force_recompute and not np.isinf(energy_diff):
             self._force_recompute_audit_after(
@@ -425,13 +404,10 @@ class Sampler:
         mass = self.topology.get_type_property(atom_type, "mass", 1.0)
 
         # Calculate insertion energy
-        with self.profiler.measure("energy_insert"):
-            insertion_delta_energy, insertion_delta_virial = (
-                self.topology.get_energy_insertion(
-                    position, atom_type, charge, self.system
-                )
-            )
-            # print(f"insertion_energy: {insertion_energy}")
+        insertion_delta_energy, insertion_delta_virial = (
+            self.topology.get_energy_insertion(position, atom_type, charge, self.system)
+        )
+        # print(f"insertion_energy: {insertion_energy}")
 
         # Thermal wavelength
         Lambda = self._thermal_de_broglie_wavelength(mass)
@@ -467,10 +443,10 @@ class Sampler:
                     self.system.positions[: self.system.N],
                     self.system.charges[: self.system.N],
                 )
-                self.system.ewald_handler.update_dipole_moment(
-                    self.system.positions[: self.system.N],
-                    self.system.charges[: self.system.N],
-                )
+                # self.system.ewald_handler.update_dipole_moment(
+                #     self.system.positions[: self.system.N],
+                #     self.system.charges[: self.system.N],
+                # )
 
             # Update ideal gas chemical potential
             self.system.mu_id = self._compute_mu_id()
@@ -503,10 +479,9 @@ class Sampler:
         Lambda = self._thermal_de_broglie_wavelength(mass)
 
         # Compute single-atom energy and set negative deltas in topology for cache update
-        with self.profiler.measure("energy_delete"):
-            deletion_delta_energy, deletion_delta_virial = (
-                self.topology.get_energy_deletion(atom_id, self.system)
-            )
+        deletion_delta_energy, deletion_delta_virial = (
+            self.topology.get_energy_deletion(atom_id, self.system)
+        )
 
         # Acceptance probability (grand canonical)
         beta = 1.0 / (self.kb * self.system.temp)
@@ -579,9 +554,8 @@ class Sampler:
         self.system.positions[: self.system.N] *= scale_factor
 
         # Compute new energy/virial by recomputing caches once
-        with self.profiler.measure("energy_after_volume"):
-            self.topology.recompute_caches(self.system)
-            new_energy = float(self.system.potential_energy)
+        self.topology.recompute_caches(self.system)
+        new_energy = float(self.system.potential_energy)
 
         new_volume = self.system.get_volume()
 

@@ -84,16 +84,23 @@ def calculate_theoretical_ewald_params(system):
 
         # Try the Lambert W approach with corrected units
         # Note: This might not be directly applicable to two-ion systems
-        arg1_alt = Q_proper * kc / eps_alt * (real_cut / (2 * V)) ** (1/2)
+        arg1_alt = Q_proper * kc / eps_alt * (real_cut / (2 * V)) ** (1 / 2)
 
         if arg1_alt > 0:  # Lambert W requires positive argument
             alpha_alt = lambertw(arg1_alt).real / real_cut**2
 
-            arg2_alt = 4 / (3 * V) * (Q_proper**2 * kc**2 / (np.pi * alpha_alt**(1/2) * eps_alt**2)) ** (2/3)
+            arg2_alt = (
+                4
+                / (3 * V)
+                * (Q_proper**2 * kc**2 / (np.pi * alpha_alt ** (1 / 2) * eps_alt**2))
+                ** (2 / 3)
+            )
             if arg2_alt > 0:
-                nc_alt = np.sqrt(3 * alpha_alt) * lambertw(arg2_alt).real ** (1/2)
+                nc_alt = np.sqrt(3 * alpha_alt) * lambertw(arg2_alt).real ** (1 / 2)
 
-                print(f"Lambert W method: alpha={alpha_alt:.6f}, real_cut={real_cut:.6f}, n_c={nc_alt}")
+                print(
+                    f"Lambert W method: alpha={alpha_alt:.6f}, real_cut={real_cut:.6f}, n_c={nc_alt}"
+                )
 
                 # Use Lambert W results if they seem reasonable
                 if 0.01 <= alpha_alt <= 1.0 and 1 <= nc_alt <= 50:
@@ -103,11 +110,7 @@ def calculate_theoretical_ewald_params(system):
         print(f"Lambert W method failed: {e}")
         print("Using standard method results")
 
-    return {
-        'alpha': alpha,
-        'real_cut': real_cut,
-        'n_c': nc
-    }
+    return {"alpha": alpha, "real_cut": real_cut, "n_c": nc}
 
 
 def compute_energy_with_params(a, alpha, real_cut, n_c, config_file, overrides=None):
@@ -122,7 +125,7 @@ def compute_energy_with_params(a, alpha, real_cut, n_c, config_file, overrides=N
             ewald_overrides = [
                 f"ewald.alpha={alpha}",
                 f"ewald.real_cut={real_cut}",
-                f"ewald.n_c={n_c}"
+                f"ewald.n_c={n_c}",
             ]
 
             if overrides:
@@ -138,21 +141,23 @@ def compute_energy_with_params(a, alpha, real_cut, n_c, config_file, overrides=N
             Lx, Ly, Lz = system.box
             system.add_molecule(
                 Particle(
-                    position=np.array([Lx/2, Ly/2, Lz/2]) + np.array([-a/2, 0, 0]),
+                    position=np.array([Lx / 2, Ly / 2, Lz / 2])
+                    + np.array([-a / 2, 0, 0]),
                     type_id=0,
                     name="Na",
                     charge=1.0,
-                    mass=1.0
+                    mass=1.0,
                 )
             )
 
             system.add_molecule(
                 Particle(
-                    position=np.array([Lx/2, Ly/2, Lz/2]) + np.array([a/2, 0, 0]),
+                    position=np.array([Lx / 2, Ly / 2, Lz / 2])
+                    + np.array([a / 2, 0, 0]),
                     type_id=1,
                     name="Cl",
                     charge=-1.0,
-                    mass=1.0
+                    mass=1.0,
                 )
             )
 
@@ -172,7 +177,7 @@ def compute_energy_with_params(a, alpha, real_cut, n_c, config_file, overrides=N
 
         except Exception as e:
             # Return large error values if computation fails
-            return float('inf'), float('inf')
+            return float("inf"), float("inf")
 
 
 def compute_energy_for_distance(args):
@@ -184,7 +189,9 @@ def compute_energy_for_distance(args):
     return compute_energy_with_params(a, alpha, real_cut, n_c, config_file, overrides)
 
 
-def objective_function(params, a_values, config_file, overrides=None, progress_bar=None, n_workers=1):
+def objective_function(
+    params, a_values, config_file, overrides=None, progress_bar=None, n_workers=1
+):
     """
     Objective function to minimize: L2 norm of error between computed and real energies.
 
@@ -206,13 +213,15 @@ def objective_function(params, a_values, config_file, overrides=None, progress_b
 
     # Ensure parameters are within reasonable bounds
     if alpha <= 0 or real_cut <= 0 or n_c <= 0:
-        return float('inf')
+        return float("inf")
 
     if n_workers > 1 and len(a_values) > 1:
         # Parallel computation
         try:
             # Prepare arguments for parallel processing
-            args_list = [(a, alpha, real_cut, n_c, config_file, overrides) for a in a_values]
+            args_list = [
+                (a, alpha, real_cut, n_c, config_file, overrides) for a in a_values
+            ]
 
             with Pool(processes=n_workers) as pool:
                 results = pool.map(compute_energy_for_distance, args_list)
@@ -221,8 +230,8 @@ def objective_function(params, a_values, config_file, overrides=None, progress_b
             real_energies = []
 
             for computed_energy, real_energy in results:
-                if computed_energy == float('inf') or real_energy == float('inf'):
-                    return float('inf')
+                if computed_energy == float("inf") or real_energy == float("inf"):
+                    return float("inf")
                 computed_energies.append(computed_energy)
                 real_energies.append(real_energy)
 
@@ -241,8 +250,8 @@ def objective_function(params, a_values, config_file, overrides=None, progress_b
                 a, alpha, real_cut, n_c, config_file, overrides
             )
 
-            if computed_energy == float('inf') or real_energy == float('inf'):
-                return float('inf')
+            if computed_energy == float("inf") or real_energy == float("inf"):
+                return float("inf")
 
             computed_energies.append(computed_energy)
             real_energies.append(real_energy)
@@ -259,8 +268,16 @@ def objective_function(params, a_values, config_file, overrides=None, progress_b
     return error
 
 
-def optimize_ewald_parameters(config_file, overrides=None, method='differential_evolution',
-                             max_iterations=50, population_size=10, tolerance=1e-4, quick_mode=False, n_workers=1):
+def optimize_ewald_parameters(
+    config_file,
+    overrides=None,
+    method="differential_evolution",
+    max_iterations=50,
+    population_size=10,
+    tolerance=1e-4,
+    quick_mode=False,
+    n_workers=1,
+):
     """
     Optimize Ewald parameters to minimize L2 norm error.
 
@@ -292,9 +309,9 @@ def optimize_ewald_parameters(config_file, overrides=None, method='differential_
     # real_cut: typically 1.0 to 10.0
     # n_c: typically 5 to 50 (integer)
     bounds = [
-        (0.01, 1.0),    # alpha
-        (0.1, 5.0),    # real_cut
-        (1, 20)         # n_c (will be rounded to integer)
+        (0.01, 1.0),  # alpha
+        (0.1, 5.0),  # real_cut
+        (1, 20),  # n_c (will be rounded to integer)
     ]
 
     print("Starting Ewald parameter optimization...")
@@ -306,9 +323,9 @@ def optimize_ewald_parameters(config_file, overrides=None, method='differential_
     print(f"Parallel workers: {n_workers}")
 
     # Calculate and display theoretical parameters
-    print("\n" + "="*50)
+    print("\n" + "=" * 50)
     print("THEORETICAL EWALD PARAMETER PREDICTION")
-    print("="*50)
+    print("=" * 50)
 
     # Create a temporary system to calculate theoretical parameters
     # We need to create a system with the same box size but with 2 atoms (Na and Cl)
@@ -320,20 +337,20 @@ def optimize_ewald_parameters(config_file, overrides=None, method='differential_
     Lx, Ly, Lz = temp_system.box
     temp_system.add_molecule(
         Particle(
-            position=np.array([Lx/2, Ly/2, Lz/2]) + np.array([-1, 0, 0]),
+            position=np.array([Lx / 2, Ly / 2, Lz / 2]) + np.array([-1, 0, 0]),
             type_id=0,
             name="Na",
             charge=1.0,
-            mass=1.0
+            mass=1.0,
         )
     )
     temp_system.add_molecule(
         Particle(
-            position=np.array([Lx/2, Ly/2, Lz/2]) + np.array([1, 0, 0]),
+            position=np.array([Lx / 2, Ly / 2, Lz / 2]) + np.array([1, 0, 0]),
             type_id=1,
             name="Cl",
             charge=-1.0,
-            mass=1.0
+            mass=1.0,
         )
     )
 
@@ -341,19 +358,25 @@ def optimize_ewald_parameters(config_file, overrides=None, method='differential_
     print(f"Theoretical alpha: {theoretical_params['alpha']:.6f}")
     print(f"Theoretical real_cut: {theoretical_params['real_cut']:.6f}")
     print(f"Theoretical n_c: {theoretical_params['n_c']:.2f}")
-    print("="*50)
+    print("=" * 50)
     print()
 
     # Create progress bar for total evaluations
-    total_evaluations = max_iterations * population_size if method == 'differential_evolution' else max_iterations * 5
+    total_evaluations = (
+        max_iterations * population_size
+        if method == "differential_evolution"
+        else max_iterations * 5
+    )
     pbar = tqdm(total=total_evaluations, desc="Optimizing parameters", unit="eval")
 
     def objective_with_progress(params):
-        return objective_function(params, a_values, config_file, overrides, pbar, n_workers)
+        return objective_function(
+            params, a_values, config_file, overrides, pbar, n_workers
+        )
 
     start_time = time.time()
 
-    if method == 'differential_evolution':
+    if method == "differential_evolution":
         # Use differential evolution for global optimization
         result = differential_evolution(
             objective_with_progress,
@@ -364,34 +387,38 @@ def optimize_ewald_parameters(config_file, overrides=None, method='differential_
             atol=tolerance,
             tol=tolerance,
             workers=1,  # Keep scipy workers=1, we handle parallelism in objective function
-            updating='deferred',
-            callback=lambda xk, convergence: pbar.set_postfix({
-                'best_error': f"{convergence:.2e}" if convergence < float('inf') else "inf"
-            })
+            updating="deferred",
+            callback=lambda xk, convergence: pbar.set_postfix(
+                {
+                    "best_error": f"{convergence:.2e}"
+                    if convergence < float("inf")
+                    else "inf"
+                }
+            ),
         )
     else:
         # Use local optimization with multiple starting points
         best_result = None
-        best_error = float('inf')
+        best_error = float("inf")
 
         # Try multiple starting points
         initial_guesses = [
-            [0.1, 2.0, 10],   # Default-like values
-            [0.2, 3.0, 15],   # Higher alpha
-            [0.05, 1.5, 8],   # Lower alpha
+            [0.1, 2.0, 10],  # Default-like values
+            [0.2, 3.0, 15],  # Higher alpha
+            [0.05, 1.5, 8],  # Lower alpha
             [0.15, 4.0, 20],  # Higher cutoffs
-            [0.3, 2.5, 12],   # Medium values
+            [0.3, 2.5, 12],  # Medium values
         ]
 
         for i, x0 in enumerate(initial_guesses):
-            print(f"Trying initial guess {i+1}/{len(initial_guesses)}: {x0}")
+            print(f"Trying initial guess {i + 1}/{len(initial_guesses)}: {x0}")
 
             result = minimize(
                 objective_with_progress,
                 x0,
                 bounds=bounds,
-                method='L-BFGS-B',
-                options={'maxiter': max_iterations, 'ftol': tolerance}
+                method="L-BFGS-B",
+                options={"maxiter": max_iterations, "ftol": tolerance},
             )
 
             if result.fun < best_error:
@@ -405,10 +432,14 @@ def optimize_ewald_parameters(config_file, overrides=None, method='differential_
     print(f"\nOptimization completed in {elapsed_time:.2f} seconds")
 
     # Extract best parameters regardless of success status
-    if hasattr(result, 'x') and result.x is not None:
+    if hasattr(result, "x") and result.x is not None:
         optimal_alpha, optimal_real_cut, optimal_n_c = result.x
         optimal_n_c = int(round(optimal_n_c))
-        best_error = result.fun if hasattr(result, 'fun') and result.fun is not None else float('inf')
+        best_error = (
+            result.fun
+            if hasattr(result, "fun") and result.fun is not None
+            else float("inf")
+        )
 
         if result.success:
             print("Optimization completed successfully!")
@@ -423,29 +454,33 @@ def optimize_ewald_parameters(config_file, overrides=None, method='differential_
         print(f"  L2 error = {best_error:.6e}")
 
         return {
-            'alpha': optimal_alpha,
-            'real_cut': optimal_real_cut,
-            'n_c': optimal_n_c,
-            'error': best_error,
-            'success': result.success,
-            'message': result.message if hasattr(result, 'message') else "Unknown",
-            'theoretical_alpha': theoretical_params['alpha'],
-            'theoretical_real_cut': theoretical_params['real_cut'],
-            'theoretical_n_c': theoretical_params['n_c']
+            "alpha": optimal_alpha,
+            "real_cut": optimal_real_cut,
+            "n_c": optimal_n_c,
+            "error": best_error,
+            "success": result.success,
+            "message": result.message if hasattr(result, "message") else "Unknown",
+            "theoretical_alpha": theoretical_params["alpha"],
+            "theoretical_real_cut": theoretical_params["real_cut"],
+            "theoretical_n_c": theoretical_params["n_c"],
         }
     else:
         print("Optimization failed completely - no valid result found!")
-        print(f"Message: {result.message if hasattr(result, 'message') else 'Unknown error'}")
+        print(
+            f"Message: {result.message if hasattr(result, 'message') else 'Unknown error'}"
+        )
         return {
-            'alpha': None,
-            'real_cut': None,
-            'n_c': None,
-            'error': float('inf'),
-            'success': False,
-            'message': result.message if hasattr(result, 'message') else 'Unknown error',
-            'theoretical_alpha': theoretical_params['alpha'],
-            'theoretical_real_cut': theoretical_params['real_cut'],
-            'theoretical_n_c': theoretical_params['n_c']
+            "alpha": None,
+            "real_cut": None,
+            "n_c": None,
+            "error": float("inf"),
+            "success": False,
+            "message": result.message
+            if hasattr(result, "message")
+            else "Unknown error",
+            "theoretical_alpha": theoretical_params["alpha"],
+            "theoretical_real_cut": theoretical_params["real_cut"],
+            "theoretical_n_c": theoretical_params["n_c"],
         }
 
 
@@ -453,7 +488,7 @@ def plot_results(optimal_params, config_file, overrides=None, n_workers=1):
     """
     Plot comparison between computed and real energies using optimal parameters.
     """
-    if optimal_params['alpha'] is None:
+    if optimal_params["alpha"] is None:
         print("Cannot plot results - no valid parameters found")
         return
 
@@ -466,8 +501,17 @@ def plot_results(optimal_params, config_file, overrides=None, n_workers=1):
     if n_workers > 1 and len(a_values) > 1:
         # Parallel computation for plotting
         try:
-            args_list = [(a, optimal_params['alpha'], optimal_params['real_cut'],
-                         optimal_params['n_c'], config_file, overrides) for a in a_values]
+            args_list = [
+                (
+                    a,
+                    optimal_params["alpha"],
+                    optimal_params["real_cut"],
+                    optimal_params["n_c"],
+                    config_file,
+                    overrides,
+                )
+                for a in a_values
+            ]
 
             with Pool(processes=n_workers) as pool:
                 results = pool.map(compute_energy_for_distance, args_list)
@@ -486,30 +530,46 @@ def plot_results(optimal_params, config_file, overrides=None, n_workers=1):
             for a in pbar:
                 computed_energy, real_energy = compute_energy_with_params(
                     a,
-                    optimal_params['alpha'],
-                    optimal_params['real_cut'],
-                    optimal_params['n_c'],
+                    optimal_params["alpha"],
+                    optimal_params["real_cut"],
+                    optimal_params["n_c"],
                     config_file,
-                    overrides
+                    overrides,
                 )
                 computed_energies.append(computed_energy)
                 real_energies.append(real_energy)
 
     # Create plot
     plt.figure(figsize=(10, 6))
-    plt.plot(a_values, computed_energies, 'o-', label='Ewald (optimized)', linewidth=2, markersize=6)
-    plt.plot(a_values, real_energies, 's-', label='Coulomb (exact)', linewidth=2, markersize=6)
-    plt.xlabel('Distance (Å)')
-    plt.ylabel('Energy (kJ/mol)')
-    plt.title(f'Ewald vs Coulomb Energy Comparison\n'
-              f'α={optimal_params["alpha"]:.4f}, '
-              f'rcut={optimal_params["real_cut"]:.2f}, '
-              f'nc={optimal_params["n_c"]}, '
-              f'L2 error={optimal_params["error"]:.2e}')
+    plt.plot(
+        a_values,
+        computed_energies,
+        "o-",
+        label="Ewald (optimized)",
+        linewidth=2,
+        markersize=6,
+    )
+    plt.plot(
+        a_values,
+        real_energies,
+        "s-",
+        label="Coulomb (exact)",
+        linewidth=2,
+        markersize=6,
+    )
+    plt.xlabel("Distance (Å)")
+    plt.ylabel("Energy (kJ/mol)")
+    plt.title(
+        f"Ewald vs Coulomb Energy Comparison\n"
+        f"α={optimal_params['alpha']:.4f}, "
+        f"rcut={optimal_params['real_cut']:.2f}, "
+        f"nc={optimal_params['n_c']}, "
+        f"L2 error={optimal_params['error']:.2e}"
+    )
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig('ewald_optimization_results.png', dpi=300, bbox_inches='tight')
+    plt.savefig("ewald_optimization_results.png", dpi=300, bbox_inches="tight")
     plt.show()
 
     print(f"Plot saved as 'ewald_optimization_results.png'")
@@ -518,49 +578,48 @@ def plot_results(optimal_params, config_file, overrides=None, n_workers=1):
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="Optimize Ewald parameters to minimize L2 norm error",
-        add_help=True
+        description="Optimize Ewald parameters to minimize L2 norm error", add_help=True
     )
     parser.add_argument("config", help="Configuration file path")
     parser.add_argument(
         "--method",
-        choices=['differential_evolution', 'minimize'],
-        default='differential_evolution',
-        help="Optimization method to use"
+        choices=["differential_evolution", "minimize"],
+        default="differential_evolution",
+        help="Optimization method to use",
     )
     parser.add_argument(
         "--plot",
-        action='store_true',
-        help="Generate comparison plot after optimization"
+        action="store_true",
+        help="Generate comparison plot after optimization",
     )
     parser.add_argument(
         "--max-iterations",
         type=int,
         default=50,
-        help="Maximum number of optimization iterations (default: 50)"
+        help="Maximum number of optimization iterations (default: 50)",
     )
     parser.add_argument(
         "--population-size",
         type=int,
         default=10,
-        help="Population size for differential evolution (default: 10)"
+        help="Population size for differential evolution (default: 10)",
     )
     parser.add_argument(
         "--tolerance",
         type=float,
         default=1e-4,
-        help="Convergence tolerance (default: 1e-4)"
+        help="Convergence tolerance (default: 1e-4)",
     )
     parser.add_argument(
         "--quick",
-        action='store_true',
-        help="Quick test mode with reduced iterations and fewer distance points"
+        action="store_true",
+        help="Quick test mode with reduced iterations and fewer distance points",
     )
     parser.add_argument(
         "--workers",
         type=int,
         default=1,
-        help=f"Number of parallel workers (default: 1, max: {cpu_count()})"
+        help=f"Number of parallel workers (default: 1, max: {cpu_count()})",
     )
     parser.add_argument(
         "overrides",
@@ -576,7 +635,9 @@ def main():
         print(f"Warning: Number of workers must be >= 1, setting to 1")
         args.workers = 1
     elif args.workers > max_workers:
-        print(f"Warning: Number of workers ({args.workers}) exceeds available CPUs ({max_workers}), setting to {max_workers}")
+        print(
+            f"Warning: Number of workers ({args.workers}) exceeds available CPUs ({max_workers}), setting to {max_workers}"
+        )
         args.workers = max_workers
 
     # Normalize overrides into dotlist format
@@ -601,30 +662,38 @@ def main():
             population_size=args.population_size,
             tolerance=args.tolerance,
             quick_mode=args.quick,
-            n_workers=args.workers
+            n_workers=args.workers,
         )
 
         # Save results to file
-        with open('ewald_optimization_results.txt', 'w') as f:
+        with open("ewald_optimization_results.txt", "w") as f:
             f.write("Ewald Parameter Optimization Results\n")
             f.write("=" * 40 + "\n\n")
 
             # Add theoretical parameters for comparison
             f.write("THEORETICAL PREDICTIONS:\n")
             f.write("-" * 25 + "\n")
-            f.write(f"Theoretical alpha: {optimal_params.get('theoretical_alpha', 'N/A'):.6f}\n")
-            f.write(f"Theoretical real_cut: {optimal_params.get('theoretical_real_cut', 'N/A'):.6f}\n")
-            f.write(f"Theoretical n_c: {optimal_params.get('theoretical_n_c', 'N/A'):.2f}\n\n")
+            f.write(
+                f"Theoretical alpha: {optimal_params.get('theoretical_alpha', 'N/A'):.6f}\n"
+            )
+            f.write(
+                f"Theoretical real_cut: {optimal_params.get('theoretical_real_cut', 'N/A'):.6f}\n"
+            )
+            f.write(
+                f"Theoretical n_c: {optimal_params.get('theoretical_n_c', 'N/A'):.2f}\n\n"
+            )
 
             f.write("OPTIMIZATION RESULTS:\n")
             f.write("-" * 20 + "\n")
-            if optimal_params['alpha'] is not None:
+            if optimal_params["alpha"] is not None:
                 f.write(f"Best alpha found: {optimal_params['alpha']:.6f}\n")
                 f.write(f"Best real_cut found: {optimal_params['real_cut']:.6f}\n")
                 f.write(f"Best n_c found: {optimal_params['n_c']}\n")
                 f.write(f"L2 error: {optimal_params['error']:.6e}\n")
-                f.write(f"Convergence: {'Success' if optimal_params['success'] else 'Failed'}\n")
-                if not optimal_params['success']:
+                f.write(
+                    f"Convergence: {'Success' if optimal_params['success'] else 'Failed'}\n"
+                )
+                if not optimal_params["success"]:
                     f.write(f"Message: {optimal_params.get('message', 'Unknown')}\n")
             else:
                 f.write("Optimization failed completely - no valid parameters found!\n")
@@ -633,12 +702,13 @@ def main():
         print(f"\nResults saved to 'ewald_optimization_results.txt'")
 
         # Generate plot if requested (even if optimization didn't converge)
-        if args.plot and optimal_params['alpha'] is not None:
+        if args.plot and optimal_params["alpha"] is not None:
             plot_results(optimal_params, args.config, overrides, args.workers)
 
     except Exception as e:
         print(f"Error: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 

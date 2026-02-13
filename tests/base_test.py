@@ -191,10 +191,10 @@ class BaseEwaldTest:
                 self.system.positions[: self.system.N_atoms],
                 self.system.charges[: self.system.N_atoms],
             )
-            self.system.ewald_handler.update_dipole_moment(
-                self.system.positions[: self.system.N_atoms],
-                self.system.charges[: self.system.N_atoms],
-            )
+            # self.system.ewald_handler.update_dipole_moment(
+            #     self.system.positions[: self.system.N_atoms],
+            #     self.system.charges[: self.system.N_atoms],
+            # )
 
     def _get_center_position(self) -> np.ndarray:
         """Get center position of the simulation box."""

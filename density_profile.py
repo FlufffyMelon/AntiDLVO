@@ -95,6 +95,12 @@ def read_xyz_trajectory(
             species_frames.append(frame_species)
             frame_index += 1
 
+    if len(positions_frames) == 0:
+        raise ValueError(
+            f"No valid frames found in trajectory file: {path}. "
+            "The file may be empty or not in the expected EXTXYZ format."
+        )
+
     positions = np.stack(positions_frames, axis=0)
     maxlen = max(max(len(s) for s in fr) for fr in species_frames)
     species = np.empty(
@@ -151,10 +157,19 @@ def main():
     if not osp.exists(trajectory_path):
         raise FileNotFoundError(f"Trajectory file not found: {trajectory_path}")
 
+    # Check if file is empty
+    if osp.getsize(trajectory_path) == 0:
+        raise ValueError(f"Trajectory file is empty: {trajectory_path}")
+
     print("Reading trajectory...")
-    positions, species, _charges, boxes, _energies = read_xyz_trajectory(
-        trajectory_path
-    )
+    try:
+        positions, species, _charges, boxes, _energies = read_xyz_trajectory(
+            trajectory_path
+        )
+    except ValueError as e:
+        raise ValueError(
+            f"Failed to read trajectory from {trajectory_path}: {e}"
+        ) from e
 
     n_frames_total, n_particles = positions.shape[:2]
     print(f"Loaded {n_frames_total} frames with {n_particles} particles")
@@ -272,7 +287,11 @@ def main():
     plt.close()
 
     # Save data
-    data_path = osp.join(args.folder, f"{args.output.split('.')[0]}.npz")
+    if args.output:
+        base_name = osp.splitext(args.output)[0]
+        data_path = osp.join(args.folder, f"{base_name}.npz")
+    else:
+        data_path = osp.join(args.folder, "density_profile.npz")
     save_data = {
         "z_edges": z_edges,
         "z_centers": z_centers,

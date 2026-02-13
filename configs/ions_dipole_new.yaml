@@ -1,8 +1,8 @@
 # Test configuration with dipole molecules mixed with particles
 experiment:
   # name: "ions_dipole_disp_${sampler.max_displacement}_1M_steps"
-  name: "ions_dipole_test"
-  results_dir: "results"
+  name: "ions_dipole_test_forces_GPU_20k_steps"
+  results_dir: "results_tmp"
   description: "Mixed system of ions and dipoles in NVT ensemble"
 
 sigma: -0.04 # C/m^2
@@ -13,7 +13,7 @@ units:
 simulation:
   ensemble: "NVT"
   temperature: 298 # K
-  n_steps: 100000
+  n_steps: 20000
 
 system:
   # n_atoms: 256  # This will be used for counts or fractions, actual atom count may differ
@@ -41,7 +41,8 @@ ewald:
   dielectric: 78.0
   z_scale_factor: 4.0
   dipole_correction: true
-
+  use_gpu: true
+  gpu_device: 1
 types:
   - Particle:
       type: "Na"
@@ -208,8 +209,8 @@ sampler:
   max_rotation: 180
   force_recompute: false
 
-debug: false
+debug: true
 
 logger:
-  log_interval: 100
-  xyz_interval: 100
+  log_interval: 50
+  xyz_interval: 50

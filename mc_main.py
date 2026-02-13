@@ -9,6 +9,8 @@ import traceback
 from pathlib import Path
 import time
 import numpy as np
+import cProfile, pstats
+
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -29,11 +31,8 @@ from src.utils import (
 from tqdm import tqdm
 
 
-def run_simulation(config_file: str, overrides=None):
+def run_simulation(cfg):
     """Run Monte Carlo simulation from configuration file."""
-    print(f"Loading configuration from {config_file}")
-    cfg = load_config(config_file, overrides=overrides)
-
     # Create components
     units = create_units(cfg)
     system = create_system(cfg, units)
@@ -84,25 +83,32 @@ def run_simulation(config_file: str, overrides=None):
 
         total_runtime = time.perf_counter() - t0
 
-        final_energy = topology.get_energy(system)
-        final_virial = system.virial
+        # final_energy = topology.get_energy(system)
+        final_energy = system.potential_energy
+        final_forces = system.forces
         print(f"Final energy: {final_energy:.6f} {units.energy_label}")
+        print(
+            f"Final mean force norm: {np.mean(np.linalg.norm(final_forces, axis=1)):.6f} {units.force_label}"
+        )
         print(f"Final number of atoms: {system.N_atoms}")
 
         # Recompute full energy from scratch for verification
         topology.recompute_caches(system)
         recomputed_energy = system.potential_energy
-        recomputed_virial = system.virial
+        # recomputed_virial = system.virial
+        recomputed_forces = system.forces
 
         print(
             f"Final energy (recomputed): {recomputed_energy:.6f} {units.energy_label}"
         )
-        print(f"Final virial: {final_virial:.6f}")
+        print(
+            f"Final mean force norm (recomputed): {np.mean(np.linalg.norm(recomputed_forces, axis=1)):.6f} {units.force_label}"
+        )
         print(
             f"Energy delta (cached -> recomputed): {(recomputed_energy - final_energy):.6f} {units.energy_label}"
         )
         print(
-            f"Virial delta (cached -> recomputed): {(recomputed_virial - final_virial):.6f} {units.pressure_label}"
+            f"Mean force norm delta (cached -> recomputed): {np.mean(np.linalg.norm(recomputed_forces - final_forces, axis=1)):.6f} {units.force_label}"
         )
         logger.log_info(
             f"Final energy (recomputed): {recomputed_energy:.6f} {units.energy_label}; "
@@ -116,16 +122,6 @@ def run_simulation(config_file: str, overrides=None):
 
         logger.log_simulation_end(system, sampler)
         print(f"Results saved to: {logger.get_output_directory()}")
-
-        # Profiling summary if enabled
-        if getattr(sampler, "debug", False):
-            from src.profiler import Profiler  # local import
-
-            summary = sampler.profiler.summary_text(sampler.n_moves, total_runtime)
-            print("")
-            print(summary)
-            for line in summary.splitlines():
-                logger.log_info(line)
 
     except KeyboardInterrupt:
         print("\nSimulation interrupted by user")
@@ -176,7 +172,21 @@ def main():
         # If odd number and a dangling key remains, ignore
 
     try:
-        run_simulation(args.config, overrides=overrides)
+        print(f"Loading configuration from {args.config}")
+        cfg = load_config(args.config, overrides=overrides)
+        if cfg.debug:
+            cProfile.runctx(
+                "run_simulation(cfg)",
+                globals(),
+                locals(),
+                "prof",
+            )
+
+            p = pstats.Stats("prof")
+            p.sort_stats("tottime").print_stats(20)
+        else:
+            run_simulation(cfg)
+
     except Exception as e:
         print(f"Error: {e}")
         print("Full traceback:")

@@ -4,6 +4,9 @@ from ..units import Units
 from .basic_force import Force
 from scipy.special import erfc
 
+_INV_SQRT_PI = 1.0 / np.sqrt(np.pi)
+_MIN_R_SQ = 1e-24  # ~1e-12 nm tolerance squared
+
 
 class EwaldReal(Force):
     """
@@ -27,14 +30,6 @@ class EwaldReal(Force):
         if system is None or not system.ewald_handler:
             N = r_ij.shape[0]
             return np.zeros(N), np.zeros((N, 3))
-
-        # r_ij = np.where(
-        #     system.pbc[np.newaxis, :],
-        #     r_ij
-        #     - system.box[np.newaxis, :]
-        #     * np.round(r_ij * system.inv_box[np.newaxis, :]),
-        #     r_ij,
-        # )
 
         # Get Ewald parameters from handler
         alpha = system.ewald_handler.alpha
@@ -61,31 +56,36 @@ class EwaldReal(Force):
         r_cut: float,
     ) -> Tuple[float, np.ndarray]:
         N = r_ij.shape[0]
-        energies = np.zeros(N)
-        forces = np.zeros((N, 3))
+        if N == 0:
+            return 0.0, np.zeros((0, 3), dtype=r_ij.dtype)
 
-        r = np.linalg.norm(r_ij, axis=1)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            mask = (r > 1e-12) & (r <= r_cut)
-            r_t = r[mask]
-            dr = r_ij[mask, :]
+        # Compute squared distances first (avoids extra sqrt work for filtered-out entries)
+        r_sq = np.einsum("ij,ij->i", r_ij, r_ij)
+        r_cut_sq = r_cut * r_cut
 
-            # Energy
-            erfc_term = erfc(np.sqrt(alpha) * r_t)
-            e = qi * qj * erfc_term / r_t
-            energies[mask] = e
+        mask = (r_sq > _MIN_R_SQ) & (r_sq <= r_cut_sq)
+        if not np.any(mask):
+            return 0.0, np.zeros_like(r_ij)
 
-            # Force magnitude on j from i (negative gradient wrt r_j)
-            # F = - d/dr (qi qj erfc(sqrt(alpha) r)/r) * r_hat
-            inv_r = 1.0 / r_t
-            inv_r2 = inv_r * inv_r
-            exp_term = np.exp(-alpha * r_t**2)
-            bracket = (
-                erfc_term * inv_r2 + 2.0 * np.sqrt(alpha / np.pi) * exp_term * inv_r
-            )
+        r_sq_sel = r_sq[mask]
+        r_sel = np.sqrt(r_sq_sel)
+        inv_r = 1.0 / r_sel
+        inv_r2 = 1.0 / r_sq_sel
 
-            force_mag = qi * qj * bracket
-            forces_vec = force_mag[:, np.newaxis] * dr * inv_r[:, np.newaxis]
-            forces[mask] = forces_vec
+        sqrt_alpha = np.sqrt(alpha)
+        scaled_r = sqrt_alpha * r_sel
 
-        return np.sum(energies), forces
+        erfc_term = erfc(scaled_r)
+        exp_term = np.exp(-alpha * r_sq_sel)
+
+        prefactor = qi * qj
+        bracket = erfc_term * inv_r + (2.0 * sqrt_alpha * _INV_SQRT_PI) * exp_term
+
+        forces = np.zeros_like(r_ij)
+        forces_sel = (
+            prefactor * bracket[:, np.newaxis] * r_ij[mask, :] * inv_r2[:, np.newaxis]
+        )
+        forces[mask, :] = forces_sel
+
+        energy = prefactor * np.sum(erfc_term * inv_r)
+        return float(energy), forces

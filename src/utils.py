@@ -17,7 +17,6 @@ from .sampler import Sampler
 from .forces import *
 from .units import Units
 from .logger import Logger
-from .profiler import Profiler
 from .molecule import Molecule, Particle, Dipole
 
 
@@ -98,6 +97,8 @@ def create_system(cfg, units: Units) -> System:
         dielectric = cfg.ewald.get("dielectric", None)
         z_scale_factor = cfg.ewald.get("z_scale_factor", 1.0)
         dipole_correction = cfg.ewald.get("dipole_correction", False)
+        use_gpu = cfg.ewald.get("use_gpu", False)
+        gpu_device = cfg.ewald.get("gpu_device", 0)
 
         if not (
             alpha is None
@@ -114,6 +115,8 @@ def create_system(cfg, units: Units) -> System:
                 z_scale_factor=z_scale_factor,
                 dipole_correction=dipole_correction,
                 units=units,
+                use_gpu=use_gpu,
+                gpu_device=gpu_device,
             )
 
     n_atoms = cfg.system.get("n_atoms", 0)
@@ -338,10 +341,10 @@ def setup_initial_configuration(
             system.positions[: system.N_atoms],
             system.charges[: system.N_atoms],
         )
-        system.ewald_handler.update_dipole_moment(
-            system.positions[: system.N_atoms],
-            system.charges[: system.N_atoms],
-        )
+        # system.ewald_handler.update_dipole_moment(
+        #     system.positions[: system.N_atoms],
+        #     system.charges[: system.N_atoms],
+        # )
 
 
 def _create_molecule(
@@ -861,9 +864,7 @@ def check_initial_configuration_energy(system: System, topology: Topology) -> No
 
 def create_topology(cfg, units: Units) -> Topology:
     """Create topology with force field from configuration (new schema)."""
-    debug = bool(cfg.get("debug", False))
-    profiler = Profiler(enabled=debug)
-    topology = Topology(units=units, profiler=profiler)
+    topology = Topology(units=units)
 
     types_cfg = cfg.get("types", [])
     if not types_cfg:
@@ -1124,7 +1125,6 @@ def create_sampler(
         logger=logger,
         units=units,
         debug=debug,
-        profiler=topology.profiler,
         force_recompute=force_recompute,
     )
 

@@ -114,6 +114,10 @@ class StandardUnits(UnitsSystem):
         # return "bar"
         return "kJ/mol/nm^3"
 
+    @property
+    def force_label(self) -> str:
+        return "kJ/mol/nm"
+
 
 class Units:
     """Main units interface that can switch between unit systems."""
@@ -171,3 +175,7 @@ class Units:
     @property
     def pressure_label(self) -> str:
         return self.system.pressure_label
+
+    @property
+    def force_label(self) -> str:
+        return self.system.force_label

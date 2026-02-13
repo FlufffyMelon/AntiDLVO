@@ -1,0 +1,238 @@
+C: 0.01
+Cz: 0.1
+H: 3.0
+N_wall: ${eval:"round(abs(${sigma} * ${system.L} * ${system.L} / 16.020506248)**0.5)**2"}
+debug: false
+ewald:
+  alpha: 1.7639334797842054
+  dielectric: 78.0
+  dipole_correction: true
+  eps: 0.001
+  n_c: 4
+  real_cut: 1.49
+  z_scale_factor: 4.0
+experiment:
+  description: Mixed system of ions and dipoles in NVT ensemble
+  name: ions_dipole_sigma_-0.2
+  results_dir: results/pz_27.6
+logger:
+  log_interval: 100
+  xyz_interval: 100
+one_body:
+- forces:
+  - kind: hard_wall
+    r_wall: 0.331
+    style: bottom
+  - kind: hard_wall
+    r_wall: 0.331
+    style: top
+  type: Na
+- forces:
+  - kind: hard_wall
+    r_wall: 0.383
+    style: bottom
+  - kind: hard_wall
+    r_wall: 0.383
+    style: top
+  type: Cl
+- forces:
+  - kind: hard_wall
+    r_wall: 0.35
+    style: bottom
+  - kind: hard_wall
+    r_wall: 0.35
+    style: top
+  type: (Ip, Im)
+- forces:
+  - kind: hard_wall
+    r_wall: 0.28730817989081336
+    style: bottom
+  - kind: hard_wall
+    r_wall: 0.28730817989081336
+    style: top
+  type: G
+pairs:
+- forces:
+  - kind: hard_sphere
+    r1: 0.331
+    r2: 0.331
+  - kind: ewald
+  types:
+  - Na
+  - Na
+- forces:
+  - kind: hard_sphere
+    r1: 0.383
+    r2: 0.383
+  - kind: ewald
+  types:
+  - Cl
+  - Cl
+- forces:
+  - kind: hard_sphere
+    r1: 0.331
+    r2: 0.383
+  - kind: ewald
+  types:
+  - Na
+  - Cl
+- forces:
+  - kind: hard_sphere
+    r1: 0.331
+    r2: 0.35
+  - kind: ewald
+  types:
+  - Na
+  - (Ip, Im)
+- forces:
+  - kind: hard_sphere
+    r1: 0.383
+    r2: 0.35
+  - kind: ewald
+  types:
+  - Cl
+  - (Ip, Im)
+- forces:
+  - kind: hard_sphere
+    r1: 0.331
+    r2: 0.28730817989081336
+  types:
+  - Na
+  - G
+- forces:
+  - kind: hard_sphere
+    r1: 0.383
+    r2: 0.28730817989081336
+  types:
+  - Cl
+  - G
+- forces:
+  - kind: hard_sphere
+    r1: 0.35
+    r2: 0.35
+  - kind: ewald
+  types:
+  - Ip
+  - Ip
+- forces:
+  - kind: hard_sphere
+    r1: 0.35
+    r2: 0.35
+  - kind: ewald
+  types:
+  - Im
+  - Im
+- forces:
+  - exclude_intermol: true
+    kind: hard_sphere
+    r1: 0.35
+    r2: 0.35
+  - kind: ewald
+  types:
+  - Ip
+  - Im
+- forces:
+  - exclude_intermol: true
+    kind: hard_sphere
+    r1: 0.35
+    r2: 0.28730817989081336
+  types:
+  - (Ip, Im)
+  - G
+- forces:
+  - exclude_intermol: true
+    kind: hard_sphere
+    r1: 0.28730817989081336
+    r2: 0.28730817989081336
+  types:
+  - G
+  - G
+- forces:
+  - kind: ewald
+  types:
+  - (Na, Cl, Ip, Im)
+  - Wb
+- forces:
+  - kind: ewald
+  types:
+  - (Na, Cl, Ip, Im)
+  - Wt
+pz: 27.6
+r_Cl: 0.383
+r_G: 0.28730817989081336
+r_Ipm: 0.0
+r_Na: 0.331
+sampler:
+  actions:
+  - action: translate
+    probability: 1.0
+  force_recompute: false
+  max_displacement: 1.0
+  max_rotation: 180
+sigma: -1
+simulation:
+  ensemble: NVT
+  n_steps: 1000000
+  temperature: 298
+system:
+  L: 20.0
+  box:
+  - 20.0
+  - 20.0
+  - 3.0
+  initial_capacity: 2048
+  non_static_init:
+    min_distance: 1.2
+    mode: random
+    padding:
+    - 0.0
+    - 0.0
+    - 1.2
+  pbc:
+  - true
+  - true
+  - false
+  static_init:
+    mode: uniform
+types:
+- Particle:
+    charge: 1.0
+    count: 0
+    mass: 39.0983
+    type: Na
+- Particle:
+    charge: -1.0
+    count: 0
+    mass: 35.453
+    type: Cl
+- Dipole:
+    charge: 1.0
+    count: 1
+    ghost_count: 1
+    length: 0.5746163597816267
+    mass: 18.01528
+    type_ghost: G
+    type_minus: Im
+    type_plus: Ip
+- Particle:
+    # charge: -0.1219179151 # -1.9506866417 # -0.4876716604244694
+    # charge: ${eval:"${sigma} * ${system.L} * ${system.L} / ${N_wall} / 0.1602"} # e
+    charge: -1.0
+    # count: 4096
+    count: ${N_wall}
+    mass: 1.0
+    static: true
+    type: Wb
+    z: 0.0
+- Particle:
+    # charge: -0.1219179151 # -1.9506866417 # -0.4876716604244694
+    # charge: ${eval:"${sigma} * ${system.L} * ${system.L} / ${N_wall} / 0.1602"} # e
+    charge: -1.0
+    # count: 4096
+    count: ${N_wall}
+    mass: 1.0
+    static: true
+    type: Wt
+    z: 3.0
+units:
+  system: standard

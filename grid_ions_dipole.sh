@@ -1,10 +1,3 @@
-#!/bin/bash
-#SBATCH --job-name=zwitter
-#SBATCH --cpus-per-task=32
-#SBATCH --gres=gpu:0
-# #SBATCH -w node2
-
-
 set -euo pipefail
 
 # -----------------------------
@@ -12,14 +5,14 @@ set -euo pipefail
 # -----------------------------
 
 # Set the dipole moment at the very beginning (run this script twice: 17 and 27.6)
-PZ="17"
-# PZ="27.6"
+# PZ="17"
+PZ="27.6"
 
 # Base config to use
 CONFIG_FILE="configs_prod/ions_dipole.yaml"
 
 # Degree of parallelism (adjusted for 32 cores)
-MAX_PARALLEL=22
+MAX_PARALLEL=64
 
 # Defaults (match values in the config, i.e., those marked in parentheses)
 H0=3
@@ -135,19 +128,21 @@ run_calc() {
     local name="ions_dipole_${sweep_kind}_pz_${pz_label}_H_${H_val}_sigma_${SIGMA_val}_C_${C_val}_Cz_${CZ_val}"
 
     # Place results under a hierarchy by pz and sweep kind
-    local results_dir="results_prod_neutral/pz_${pz_label}/${sweep_kind}"
+    local results_dir="results_prod/pz_${pz_label}/${sweep_kind}"
 
     # Ensure results_dir exists so logs/config backups are easy to find (runner will still create its own timestamped subfolder)
     # mkdir -p "$results_dir"
 
     # Get GPU device (alternates between 0 and 1)
     local gpu_dev
-    gpu_dev=$(get_gpu_device)
+    # gpu_dev=$(get_gpu_device)
+    gpu_dev=1
 
     source .venv/bin/activate
 
     # Start the job and capture its PID
     ./run.sh "$CONFIG_FILE" \
+        --ewald.gpu_device "$gpu_dev" \
         --pz "$PZ" \
         --H "$H_val" \
         --sigma "$SIGMA_val" \
@@ -185,25 +180,25 @@ echo "Script start time: $(date)"
 
 # H sweep (vary H; others at defaults)
 for H_val in "${H_SWEEP[@]}"; do
-    bg_limit "$MAX_PARALLEL"
+    # bg_limit "$MAX_PARALLEL"
     run_calc "H" "$H_val" "$SIGMA0" "$C0" "$CZ0"
 done
 
 # sigma sweep (vary sigma; others at defaults)
 for SIGMA_val in "${SIGMA_SWEEP[@]}"; do
-    bg_limit "$MAX_PARALLEL"
+    # bg_limit "$MAX_PARALLEL"
     run_calc "sigma" "$H0" "$SIGMA_val" "$C0" "$CZ0"
 done
 
 # C sweep (vary C; others at defaults)
 for C_val in "${C_SWEEP[@]}"; do
-    bg_limit "$MAX_PARALLEL"
+    # bg_limit "$MAX_PARALLEL"
     run_calc "C" "$H0" "$SIGMA0" "$C_val" "$CZ0"
 done
 
 # Cz sweep (vary Cz; others at defaults)
 for CZ_val in "${CZ_SWEEP[@]}"; do
-    bg_limit "$MAX_PARALLEL"
+    # bg_limit "$MAX_PARALLEL"
     run_calc "Cz" "$H0" "$SIGMA0" "$C0" "$CZ_val"
 done
 

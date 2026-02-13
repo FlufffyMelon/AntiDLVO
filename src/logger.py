@@ -264,9 +264,7 @@ class Logger:
         if system.N_atoms == 0:
             return
 
-        positions, molecule_ids, types, names, charges, masses, statics = (
-            system.get_active_atoms()
-        )
+        positions, _, _, types, names, charges, masses, _ = system.get_active_atoms()
 
         # Build extxyz header key=value pairs
         # Lattice as 9-vector row-major

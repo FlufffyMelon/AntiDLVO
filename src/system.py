@@ -105,6 +105,7 @@ class System:
         self.charges = np.zeros(self.capacity, dtype=np.float64)
         self.masses = np.zeros(self.capacity, dtype=np.float64)
         self.positions = np.zeros((self.capacity, 3), dtype=np.float64)
+        self.forces = np.zeros((self.capacity, 3), dtype=np.float64)
         self.types = np.zeros(self.capacity, dtype=np.int32)
         self.names = np.empty(self.capacity, dtype="U10")
         self.molecule_ids = np.zeros(self.capacity, dtype=np.int32)
@@ -119,6 +120,7 @@ class System:
         new_charges = np.zeros(new_capacity, dtype=np.float64)
         new_masses = np.zeros(new_capacity, dtype=np.float64)
         new_positions = np.zeros((new_capacity, 3), dtype=np.float64)
+        new_forces = np.zeros((new_capacity, 3), dtype=np.float64)
         new_types = np.zeros(new_capacity, dtype=np.int32)
         new_names = np.empty(new_capacity, dtype="U10")
         new_molecule_ids = np.zeros(new_capacity, dtype=np.int32)
@@ -129,6 +131,7 @@ class System:
         new_charges[:copy_size] = self.charges[:copy_size]
         new_masses[:copy_size] = self.masses[:copy_size]
         new_positions[:copy_size] = self.positions[:copy_size]
+        new_forces[:copy_size] = self.forces[:copy_size]
         new_types[:copy_size] = self.types[:copy_size]
         new_names[:copy_size] = self.names[:copy_size]
         new_molecule_ids[:copy_size] = self.molecule_ids[:copy_size]
@@ -138,6 +141,7 @@ class System:
         self.charges = new_charges
         self.masses = new_masses
         self.positions = new_positions
+        self.forces = new_forces
         self.types = new_types
         self.names = new_names
         self.molecule_ids = new_molecule_ids
@@ -222,6 +226,9 @@ class System:
             self.positions[atom_id : self.N_atoms - 1] = self.positions[
                 atom_id + 1 : self.N_atoms
             ]
+            self.forces[atom_id : self.N_atoms - 1] = self.positions[
+                atom_id + 1 : self.N_atoms
+            ]
             self.types[atom_id : self.N_atoms - 1] = self.types[
                 atom_id + 1 : self.N_atoms
             ]
@@ -243,6 +250,7 @@ class System:
 
         # Zero out the last position
         self.positions[self.N_atoms - 1] = 0.0
+        self.forces[self.N_atoms - 1] = 0.0
         self.types[self.N_atoms - 1] = 0
         self.names[self.N_atoms - 1] = ""
         self.charges[self.N_atoms - 1] = 0.0
@@ -257,9 +265,9 @@ class System:
             self.ewald_handler.update_structure_factors(
                 self.positions[: self.N_atoms], self.charges[: self.N_atoms]
             )
-            self.ewald_handler.update_dipole_moment(
-                self.positions[: self.N_atoms], self.charges[: self.N_atoms]
-            )
+            # self.ewald_handler.update_dipole_moment(
+            #     self.positions[: self.N_atoms], self.charges[: self.N_atoms]
+            # )
 
     def get_active_atoms(self) -> Tuple[np.ndarray, ...]:
         """
@@ -270,6 +278,7 @@ class System:
         """
         return (
             self.positions[: self.N_atoms],
+            self.forces[: self.N_atoms],
             self.molecule_ids[: self.N_atoms],
             self.types[: self.N_atoms],
             self.names[: self.N_atoms],
@@ -308,27 +317,12 @@ class System:
             Minimum image distance vector
         """
         dr = pos2 - pos1
-        dr = np.where(self.pbc, dr - self.box * np.round(dr * self.inv_box), dr)
-        return dr
-
-    def get_all_distances(self, pos1: np.ndarray, positions: np.ndarray) -> np.ndarray:
-        """
-        Calculate distances from one position to all others.
-
-        Args:
-            pos1: Single position (3,)
-            positions: Array of positions (N, 3)
-
-        Returns:
-            Array of distances (N,)
-        """
-        dr = positions - pos1[np.newaxis, :]
         dr = np.where(
             self.pbc[np.newaxis, :],
             dr - self.box[np.newaxis, :] * np.round(dr * self.inv_box[np.newaxis, :]),
             dr,
         )
-        return np.linalg.norm(dr, axis=1)
+        return dr
 
     def update_box(self, scale_factor: float) -> None:
         """
@@ -347,9 +341,9 @@ class System:
             self.ewald_handler.update_structure_factors(
                 self.positions[: self.N_atoms], self.charges[: self.N_atoms]
             )
-            self.ewald_handler.update_dipole_moment(
-                self.positions[: self.N_atoms], self.charges[: self.N_atoms]
-            )
+            # self.ewald_handler.update_dipole_moment(
+            #     self.positions[: self.N_atoms], self.charges[: self.N_atoms]
+            # )
 
     def get_volume(self) -> float:
         """
@@ -392,35 +386,6 @@ class System:
             return None
 
         return self.molecules[molecule_id]
-
-    def update_molecule_positions(self, molecule_id: int) -> None:
-        """
-        Update atom positions based on the molecule's current state.
-
-        This is useful after molecule translation or rotation.
-
-        Args:
-            molecule_id: ID of the molecule to update
-        """
-        if molecule_id < 0 or molecule_id >= len(self.molecules):
-            raise ValueError(f"Invalid molecule ID: {molecule_id}")
-
-        molecule = self.molecules[molecule_id]
-        particles = molecule.get_particles()
-
-        # Get all atoms belonging to this molecule
-        atom_indices = self.get_molecule_atoms(molecule_id)
-
-        # Ensure we have the right number of particles
-        if len(atom_indices) != len(particles):
-            raise ValueError(
-                f"Mismatch between molecule particles ({len(particles)}) and "
-                f"atoms in system ({len(atom_indices)})"
-            )
-
-        # Update positions in the system
-        for i, (position, _, _, _, _) in zip(atom_indices, particles):
-            self.positions[i] = position
 
     def unwrap_molecule(self, positions: np.ndarray) -> np.ndarray:
         """
