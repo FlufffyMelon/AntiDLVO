@@ -183,7 +183,7 @@ class TestPeriodicSystem(BaseEwaldTest):
         coulomb_system.ewald_handler = None
 
         # Calculate the energy using the Coulomb topology
-        energy, _ = coulomb_topology.compute_energy_virial(coulomb_system)
+        energy, _ = coulomb_topology.compute_energy_forces(coulomb_system)
 
         return energy
 

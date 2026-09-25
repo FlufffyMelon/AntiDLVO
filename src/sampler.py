@@ -391,7 +391,7 @@ class Sampler:
         dE_delta = float(predicted_delta)
         E_cached_after = float(self.system.potential_energy or 0.0)
         # Real energy after the move (non-mutating)
-        E_real_after, _ = self.topology.compute_energy_virial(self.system)
+        E_real_after, _ = self.topology.compute_energy_forces(self.system)
         dE_real = E_real_after - float(self._audit_E_before_real)
         print(
             f"[force_recompute] {action}: dE(delta)={dE_delta:.2e}, dE(real)={dE_real:.2e}, "

@@ -166,7 +166,7 @@ class TestNaClCrystal(BaseEwaldTest):
         # total_ewald_energy = pair_energy + kspace_energy + self_energy
 
         # Calculate energies - get individual Ewald components
-        pair_energy, _ = self.topology.compute_energy_virial(self.system)
+        pair_energy, _ = self.topology.compute_energy_forces(self.system)
         kspace_energy = self.system.ewald_handler.compute_total_kspace_energy()
         self_energy = self.system.ewald_handler.compute_total_self_energy(
             self.system.charges

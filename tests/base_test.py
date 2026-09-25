@@ -207,5 +207,5 @@ class BaseEwaldTest:
 
     def _compute_energy(self) -> float:
         """Compute energy using the topology."""
-        computed_energy, _ = self.topology.compute_energy_virial(self.system)
+        computed_energy, _ = self.topology.compute_energy_forces(self.system)
         return computed_energy
