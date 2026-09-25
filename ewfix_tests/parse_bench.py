@@ -93,6 +93,10 @@ def main(argv=None):
     ap.add_argument("--ngpu", type=int, default=1)
     ap.add_argument("--threads", type=int, default=0,
                     help="OMP_NUM_THREADS used; 0 means it was left unset")
+    ap.add_argument("--expect", type=int, default=0,
+                    help="how many run directories this point should have "
+                         "produced; anything else is reported rather than "
+                         "quietly averaged")
     ap.add_argument("--dmon")
     ap.add_argument("--append")
     ap.add_argument("--report")
@@ -122,14 +126,26 @@ def main(argv=None):
         print(f"  no usable timings under {args.pattern}", file=sys.stderr)
         return 1
 
+    # A point repeated under the same label leaves its old directories behind,
+    # and the glob would pick them up as if they were extra processes of this
+    # measurement -- which inflates the aggregate rate without touching the
+    # per-process one. Say so instead of averaging it away.
+    expect = args.expect or (args.nproc * args.ngpu)
+    if len(rates) != expect:
+        print(f"  WARNING: {args.label} matched {len(rates)} run directories "
+              f"but launched {expect} processes; the aggregate rate is "
+              f"computed from {expect}, the per-process rate from all of them",
+              file=sys.stderr)
+
     util, mem = dmon_stats(args.dmon)
     slowest = min(rates)
+    mean = sum(rates) / len(rates)
     row = dict(
         label=args.label, H=args.H, nproc=args.nproc, ngpu=args.ngpu,
-        threads=args.threads, n_proc_total=len(rates),
-        rate_mean=round(sum(rates) / len(rates), 3),
+        threads=args.threads, n_proc_total=expect,
+        rate_mean=round(mean, 3),
         rate_min=round(slowest, 3), rate_max=round(max(rates), 3),
-        rate_total=round(sum(rates), 3),
+        rate_total=round(mean * expect, 3),
         hours_1e6_slowest=round(HOURS_1E6 / slowest, 3),
         gpu_util_pct=round(util, 1), gpu_mem_mb=round(mem, 1),
         n_parsed=len(rates),

@@ -38,12 +38,19 @@ PY=$PWD/.venv/bin/python
 CSV=ewfix_tests/bench/bench.csv
 
 N_STEPS=${N_STEPS:-2500}
+POINT=0
 
 # measure <H> <proc per gpu> <gpu list> <threads, 0 = leave unset>
 measure() {
     local H=$1 NPROC=$2 GPUS=$3 OMP=$4
     local ngpu; ngpu=$(echo "$GPUS" | tr ',' '\n' | grep -c .)
     local tag="H${H}_n${NPROC}_g${ngpu}_t${OMP}"
+    # The same point is measured more than once on purpose (the thread controls
+    # repeat two of the scaling points), and run directories are kept. Without
+    # a per-invocation serial number the glob below would collect the earlier
+    # measurement's directories too and report twice the aggregate rate.
+    POINT=$((POINT + 1))
+    local run="${tag}_r${POINT}"
     echo
     echo "=== H=$H  ${NPROC} proc/GPU  ${ngpu} GPU  threads=${OMP} ==="
 
@@ -55,7 +62,7 @@ measure() {
               OPENBLAS_NUM_THREADS NUMEXPR_NUM_THREADS || true
     fi
 
-    nvidia-smi dmon -s um -d 5 -o T > "ewfix_tests/bench/dmon_${tag}.txt" 2>&1 &
+    nvidia-smi dmon -s um -d 5 -o T > "ewfix_tests/bench/dmon_${run}.txt" 2>&1 &
     local dmon=$!
 
     local pids=()
@@ -66,8 +73,8 @@ measure() {
                 H=$H \
                 simulation.n_steps=$N_STEPS \
                 experiment.results_dir=results_tmp/ewfix_tests/bench \
-                experiment.name="bench_${tag}_g${g}_p${p}" \
-                > "ewfix_tests/logs/bench_${tag}_g${g}_p${p}.out" 2>&1 &
+                experiment.name="bench_${run}_g${g}_p${p}" \
+                > "ewfix_tests/logs/bench_${run}_g${g}_p${p}.out" 2>&1 &
             pids+=($!)
         done
     done
@@ -82,9 +89,10 @@ measure() {
 
     uptime
     "$PY" ewfix_tests/parse_bench.py \
-        --pattern "results_tmp/ewfix_tests/bench/bench_${tag}_*" \
+        --pattern "results_tmp/ewfix_tests/bench/bench_${run}_*" \
         --label "$tag" --H "$H" --nproc "$NPROC" --ngpu "$ngpu" \
-        --threads "$OMP" --dmon "ewfix_tests/bench/dmon_${tag}.txt" \
+        --threads "$OMP" --expect $((NPROC * ngpu)) \
+        --dmon "ewfix_tests/bench/dmon_${run}.txt" \
         --append "$CSV" || true
 }
 
