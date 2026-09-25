@@ -803,6 +803,15 @@ def _build_z_limits(
 
     Types without a hard_wall (e.g. the static wall atoms themselves) keep the
     full [0, H] range.
+
+    The upper limit is pulled to the last float that the wall itself accepts.
+    HardWall(top) tests ``H - z < r_wall``, and ``H - (H - r_wall)`` is not
+    always ``r_wall`` in binary: at H=3, r_wall=0.331 it comes out one ulp
+    short, as it does at H=9 and H=11 for both 0.331 and 0.383. Without this
+    an atom placed exactly at the nominal limit would sit inside the allowed
+    interval and still carry an infinite energy, which no move could ever
+    undo. The interval loses ~1e-16 nm, and gains being a subset of what the
+    Hamiltonian permits by construction rather than by luck.
     """
     n_types = max(type_name_to_id.values()) + 1 if type_name_to_id else 0
     z_lo = np.zeros(n_types, dtype=float)
@@ -835,7 +844,10 @@ def _build_z_limits(
                 if style == "bottom":
                     z_lo[t] = max(z_lo[t], r_wall)
                 elif style == "top":
-                    z_hi[t] = min(z_hi[t], H - r_wall)
+                    hi = H - r_wall
+                    while hi > 0.0 and H - hi < r_wall:
+                        hi = np.nextafter(hi, 0.0)
+                    z_hi[t] = min(z_hi[t], hi)
 
     return z_lo, z_hi
 

@@ -41,11 +41,16 @@ from omegaconf import OmegaConf  # noqa: E402
 from ref_ewald import RefEwald3DSlab, KC, KB  # noqa: E402
 
 from src.utils import (  # noqa: E402
+    _build_z_limits,
     create_units,
     create_system,
     create_topology,
     setup_initial_configuration,
 )
+
+# trajectory.xyz is written with six decimals, so a reloaded coordinate can
+# differ from the one the run held by up to half of the last digit.
+XYZ_PRECISION = 5e-7  # nm
 
 # kJ/(mol nm^3) -> MPa
 PRESSURE_MPA = 1e30 / 6.02214076e23 / 1e6 * 1e3 / 1e3  # see note below
@@ -132,8 +137,18 @@ def build_production(run_dir, use_gpu=None):
     return cfg, units, system, topology
 
 
-def set_frame(system, frame):
-    """Install a trajectory frame into the production System."""
+def set_frame(system, frame, z_limits=None):
+    """Install a trajectory frame into the production System.
+
+    trajectory.xyz carries six decimals, so a z that the run kept legally
+    inside its slab can be written out and read back sitting exactly on the
+    boundary -- and HardWall's test is strict, so the reloaded configuration
+    then has an infinite energy and compute_energy_forces returns zero forces
+    for every atom. That is a property of the file, not of the run. Atoms
+    within the write precision of a limit are pulled back inside and the
+    largest correction is reported, so a genuine excursion (which would be
+    orders of magnitude larger) still shows up instead of being absorbed.
+    """
     n = system.N_atoms
     if frame["n"] != n:
         raise RuntimeError(f"atom count mismatch: xyz={frame['n']} system={n}")
@@ -145,6 +160,24 @@ def set_frame(system, frame):
     if not np.allclose(system.charges[:n], frame["charges"], atol=1e-9):
         raise RuntimeError("charge mismatch between xyz and rebuilt system")
     system.positions[:n] = frame["pos"]
+    if z_limits is not None:
+        z_lo, z_hi = z_limits
+        types = np.asarray(system.types[:n])
+        z = system.positions[:n, 2]
+        lo, hi = z_lo[types], z_hi[types]
+        clipped = np.clip(z, lo, hi)
+        moved = np.flatnonzero(clipped != z)
+        if moved.size:
+            shift = float(np.max(np.abs(clipped[moved] - z[moved])))
+            if shift > XYZ_PRECISION:
+                raise RuntimeError(
+                    f"frame has {moved.size} atoms outside their slab by up to "
+                    f"{shift:.3e} nm, far more than the {XYZ_PRECISION:.0e} nm "
+                    f"the xyz write precision can explain")
+            print(f"    pulled {moved.size} atom(s) back inside their slab, "
+                  f"largest correction {shift:.2e} nm (xyz write precision)",
+                  flush=True)
+            system.positions[:n, 2] = clipped
     system.ewald_handler.update_structure_factors(
         system.positions[:n], system.charges[:n]
     )
@@ -378,6 +411,7 @@ def audit_run(run_dir, frames, n_moves, use_gpu, out_dir, tag=None,
     kT = KB * T
     beta = 1.0 / kT
     print(f"  N_atoms={n}  box=({Lx},{Ly},{H})  eps={eps_r}  T={T}", flush=True)
+    z_limits = _build_z_limits(cfg, topology.type_name_to_id, H)
 
     ref = make_reference(Lx, Ly, H, eps_r, use_gpu=use_gpu,
                          gap_factor=ref_gap_factor)
@@ -420,13 +454,20 @@ def audit_run(run_dir, frames, n_moves, use_gpu, out_dir, tag=None,
 
     for fi, frame_idx in enumerate(wanted):
         frame = read_xyz_frame(traj, offsets[frame_idx])
-        set_frame(system, frame)
+        set_frame(system, frame, z_limits=z_limits)
         pos = system.positions[:n].copy()
         q = system.charges[:n].copy()
 
         # ---- production totals
         t = time.time()
         pt = prod_terms(system, topology)
+        if not math.isfinite(pt["total"]):
+            # compute_energy_forces answers an infinite energy with an all-zero
+            # force array, which would quietly turn into a wall force of zero.
+            raise RuntimeError(
+                f"frame {frame_idx} has infinite production energy: a hard "
+                f"sphere or hard wall is violated, so no force comparison on "
+                f"this frame would mean anything")
         system.potential_energy = pt["total"]
         system.forces = np.zeros_like(system.positions)
         system.forces[:n] = pt["forces"]
