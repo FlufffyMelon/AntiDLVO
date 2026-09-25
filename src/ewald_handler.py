@@ -212,9 +212,32 @@ class EwaldHandler:
         b2 = 2.0 * np.pi / Ly
         b3 = 2.0 * np.pi / Lz_scaled
 
-        # Build integer grid from -n_c..n_c and exclude zero vector
-        rng = np.arange(-self.n_c, self.n_c + 1, dtype=int)
-        ms = np.array(np.meshgrid(rng, rng, rng, indexing="ij"))
+        # AUDIT FIX 1: anisotropic k-grid with a spherical cutoff.
+        #
+        # The original code used the same integer range -n_c..n_c on all three
+        # axes.  Because b_i = 2*pi/L_i differ by more than an order of
+        # magnitude for a slit pore (L_x = L_y = 20 nm, L_z*z_scale = 12 nm),
+        # that truncates the lateral k-sum at k_max_xy = n_c*2*pi/L_x, far
+        # below what the Gaussian requires.
+        #
+        # n_c is now interpreted as the number of k-shells along the *longest*
+        # box side, i.e. k_max = n_c * 2*pi / max(L_i); the per-axis ranges
+        # follow as n_i = ceil(k_max / b_i) and a spherical cutoff |k| <= k_max
+        # is applied so that the resolution is isotropic in k, not in indices.
+        k_max = self.n_c * 2.0 * np.pi / max(Lx, Ly, Lz_scaled)
+        self.k_max = k_max
+        nx = int(np.ceil(k_max / b1))
+        ny = int(np.ceil(k_max / b2))
+        nz = int(np.ceil(k_max / b3))
+        self.n_grid = (nx, ny, nz)
+        ms = np.array(
+            np.meshgrid(
+                np.arange(-nx, nx + 1, dtype=int),
+                np.arange(-ny, ny + 1, dtype=int),
+                np.arange(-nz, nz + 1, dtype=int),
+                indexing="ij",
+            )
+        )
         ms = ms.reshape(3, -1).T  # (M,3)
         mask_nonzero = ~np.all(ms == 0, axis=1)
         ms = ms[mask_nonzero]
@@ -225,6 +248,17 @@ class EwaldHandler:
         kvecs[:, 1] = ms[:, 1] * b2
         kvecs[:, 2] = ms[:, 2] * b3
         k_sq = np.sum(kvecs * kvecs, axis=1)
+
+        keep = k_sq <= k_max * k_max
+        ms, kvecs, k_sq = ms[keep], kvecs[keep], k_sq[keep]
+        # The per-axis reach is what the audit found truncated; log it so every
+        # production run carries its own proof that the grid was wide enough.
+        print(
+            f"[EWALD] anisotropic k-grid: k_max={k_max:.4f} 1/nm "
+            f"n=({nx},{ny},{nz}) -> {len(k_sq)} k-vectors | "
+            f"k_max_axes=({nx * b1:.4f},{ny * b2:.4f},{nz * b3:.4f}) 1/nm | "
+            f"box=({Lx:.3f},{Ly:.3f},{Lz_scaled:.3f}) nm alpha={self.alpha:.6f}"
+        )
 
         # Volume and A(k) coefficients - use scaled volume for k-space
         V = float(Lx * Ly * Lz_scaled)
@@ -844,8 +878,11 @@ class EwaldHandler:
         updated_positions = positions.copy()
         updated_positions[indices] = new_positions
 
+        # AUDIT FIX 2: this used to pass `positions` (the OLD configuration),
+        # so the slab dipole correction contributed exactly zero to every
+        # MC energy difference and to the incremental forces.
         new_energy, new_forces = self.compute_dipole_correction_energy_forces(
-            positions, charges, volume
+            updated_positions, charges, volume
         )
 
         return new_energy - old_energy, new_forces - old_forces

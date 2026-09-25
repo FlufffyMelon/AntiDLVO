@@ -81,9 +81,16 @@ class EwaldReal(Force):
         prefactor = qi * qj
         bracket = erfc_term * inv_r + (2.0 * sqrt_alpha * _INV_SQRT_PI) * exp_term
 
+        # AUDIT FIX 3: sign of the real-space pair force.
+        # topology._single_pair_energy_forces builds r_ij = r_j - r_i and adds
+        # the value returned here to the force on atom i, but
+        #   F_i = -dU/dr_i = q_i q_j [erfc(a r)/r + 2a/sqrt(pi) e^{-a^2 r^2}]
+        #                    * (r_i - r_j) / r^2
+        # i.e. it points along r_i - r_j = -r_ij.  Verified by finite
+        # differences (ewald_audit/scripts/frame_audit.py, fd_force section).
         forces = np.zeros_like(r_ij)
         forces_sel = (
-            prefactor * bracket[:, np.newaxis] * r_ij[mask, :] * inv_r2[:, np.newaxis]
+            -prefactor * bracket[:, np.newaxis] * r_ij[mask, :] * inv_r2[:, np.newaxis]
         )
         forces[mask, :] = forces_sel
 
