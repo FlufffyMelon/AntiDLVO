@@ -1,9 +1,10 @@
 #!/bin/bash
 #SBATCH --job-name=zwitter
 #SBATCH --cpus-per-task=32
-#SBATCH --gres=gpu:0
-# #SBATCH -w node2
+#SBATCH --gpus 1
+#SBATCH -w node4
 
+# #SBATCH --gres=gpu:0
 
 set -euo pipefail
 
@@ -12,8 +13,8 @@ set -euo pipefail
 # -----------------------------
 
 # Set the dipole moment at the very beginning (run this script twice: 17 and 27.6)
-PZ="17"
-# PZ="27.6"
+# PZ="17"
+PZ="27.6"
 
 # Base config to use
 CONFIG_FILE="configs_prod/ions_dipole.yaml"

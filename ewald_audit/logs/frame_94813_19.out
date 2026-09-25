@@ -1,0 +1,250 @@
+task 19 -> results_prod_neutral/pz_27p6/H/ions_dipole_H_pz_27p6_H_11_sigma_-20_C_0.01_Cz_0.1_20260216_125816
+
+==============================================================================
+results_prod_neutral__pz_27p6__H__ions_dipole_H_pz_27p6_H_11_sigma_-20_C_0.01_Cz_0.1_20260216_125816
+==============================================================================
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Exception ignored in: 'cupy.cuda.memory.MemoryPool.used_bytes'
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Exception ignored in: 'cupy.cuda.memory.MemoryPool.total_bytes'
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Exception ignored in: 'cupy.cuda.memory.MemoryPool.used_bytes'
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Exception ignored in: 'cupy.cuda.memory.MemoryPool.total_bytes'
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+[GPU_MEMORY] ensure_capacity START (capacity=2048): used=0.00 MB, total_allocated=0.00 MB
+[GPU_MEMORY] ensure_capacity INIT (Sc shape=(3374, 2048), Ss shape=(3374, 2048)): used=0.00 MB, total_allocated=0.00 MB
+
+====== TOPOLOGY CONFIGURATION SUMMARY ======
+
+Registered Types:
+  0: Na (mass=39.0983, charge=1.0)
+  1: Cl (mass=35.453, charge=-1.0)
+  2: Ip (mass=18.01528, charge=1.0)
+  3: Im (mass=18.01528, charge=-1.0)
+  4: G (mass=0.0, charge=0.0)
+  5: Wb (mass=1.0, charge=-1.0)
+  6: Wt (mass=1.0, charge=-1.0)
+
+Pair Interactions:
+  Na(0) - Na(0): HardSphere, EwaldReal
+  Cl(1) - Cl(1): HardSphere, EwaldReal
+  Na(0) - Cl(1): HardSphere, EwaldReal
+  Na(0) - Ip(2): HardSphere, EwaldReal
+  Na(0) - Im(3): HardSphere, EwaldReal
+  Cl(1) - Ip(2): HardSphere, EwaldReal
+  Cl(1) - Im(3): HardSphere, EwaldReal
+  Na(0) - G(4): HardSphere
+  Cl(1) - G(4): HardSphere
+  Ip(2) - Ip(2): HardSphere, EwaldReal
+  Im(3) - Im(3): HardSphere, EwaldReal
+  Ip(2) - Im(3): HardSphere, EwaldReal
+  Ip(2) - G(4): HardSphere
+  Im(3) - G(4): HardSphere
+  G(4) - G(4): HardSphere
+  Na(0) - Wb(5): EwaldReal
+  Cl(1) - Wb(5): EwaldReal
+  Ip(2) - Wb(5): EwaldReal
+  Im(3) - Wb(5): EwaldReal
+  Na(0) - Wt(6): EwaldReal
+  Cl(1) - Wt(6): EwaldReal
+  Ip(2) - Wt(6): EwaldReal
+  Im(3) - Wt(6): EwaldReal
+  Wb(5) - Wb(5): EwaldReal
+  Wt(6) - Wt(6): EwaldReal
+  Wb(5) - Wt(6): EwaldReal
+pair_interactions_counter: 26
+Warning: 26 pair interactions found, expected 28
+Warning: Missing pair interactions for: G-Wb, G-Wt
+
+One-Body Forces:
+  Na(0): HardWall, HardWall
+  Cl(1): HardWall, HardWall
+  Ip(2): HardWall, HardWall
+  Im(3): HardWall, HardWall
+  G(4): HardWall, HardWall
+
+==========================================
+Processing spec 1/3
+Count:   0%|          | 0/994 [00:00<?, ?it/s]Count:  79%|███████▉  | 787/994 [00:00<00:00, 7856.91it/s]Count: 100%|██████████| 994/994 [00:00<00:00, 6992.37it/s]
+Processing spec 2/3
+Count:   0%|          | 0/26 [00:00<?, ?it/s]Count: 100%|██████████| 26/26 [00:00<00:00, 4558.84it/s]
+Processing spec 3/3
+Count:   0%|          | 0/264 [00:00<?, ?it/s]Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Exception ignored in: 'cupy.cuda.memory.MemoryPool.used_bytes'
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Exception ignored in: 'cupy.cuda.memory.MemoryPool.total_bytes'
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Exception ignored in: 'cupy.cuda.memory.MemoryPool.used_bytes'
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Exception ignored in: 'cupy.cuda.memory.MemoryPool.total_bytes'
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Exception ignored in: 'cupy.cuda.memory.MemoryPool.used_bytes'
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Exception ignored in: 'cupy.cuda.memory.MemoryPool.total_bytes'
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Exception ignored in: 'cupy.cuda.memory.MemoryPool.used_bytes'
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Exception ignored in: 'cupy.cuda.memory.MemoryPool.total_bytes'
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Count:  40%|███▉      | 105/264 [00:00<00:00, 1044.09it/s]Count:  83%|████████▎ | 218/264 [00:00<00:00, 1088.93it/s]Count: 100%|██████████| 264/264 [00:00<00:00, 1052.25it/s]
+[GPU_MEMORY] ensure_capacity START (capacity=4096): used=0.00 MB, total_allocated=0.00 MB
+[GPU_MEMORY] ensure_capacity ALLOC (new_Sc shape=(3374, 4096), new_Ss shape=(3374, 4096)): used=0.00 MB, total_allocated=0.00 MB
+[GPU_MEMORY] ensure_capacity COPY (copied 2048 columns): used=0.00 MB, total_allocated=0.00 MB
+[GPU_MEMORY] ensure_capacity END (Sc shape=(3374, 4096), Ss shape=(3374, 4096)): used=0.00 MB, total_allocated=0.00 MB
+min_dist: 0.767733053546955
+  N_atoms=2780  box=(20.0,20.0,11.0)  eps=78.0  T=298.0
+  reference: z_scale=6.45 r_cut=9.0 alpha=0.2843 k_max=5.117 n_k=32123 grid=(17, 17, 58)
+  trajectory: 20000 frames of 2780 atoms
+  frame 2000 (step 100050): prod recompute 2.4s
+    ref energy 5.7s
+    ref check [z_scale x1.5] dE = -5.207e-09 kT  (n_k=48200)
+    ref check [r_cut 4.5   ] dE = -1.151e-08 kT  (n_k=256997)
+    ref check [eps 1e-12   ] dE = +7.249e-09 kT  (n_k=55549)
+    wall force  prod=      5.5509  flip=     11.3721  ref=     16.4838  ideal=     16.3859  logged=5.550903 kJ/(mol nm^3)
+    FD atom   969 Na  |F_fd|=8.5912  err_as_coded=2.0164e+00  err_if_real_flipped=2.8555e-07
+    FD atom  1458 Na  |F_fd|=5.2959  err_as_coded=2.7325e+00  err_if_real_flipped=2.6489e-07
+    FD atom   968 Na  |F_fd|=12.9640  err_as_coded=1.2376e+01  err_if_real_flipped=5.2838e-07
+    FD atom  1470 Na  |F_fd|=11.4451  err_as_coded=1.0456e+01  err_if_real_flipped=7.5849e-07
+    FD atom  1962 Cl  |F_fd|=0.6989  err_as_coded=8.7244e-03  err_if_real_flipped=1.4990e-08
+    FD atom  1975 Cl  |F_fd|=0.4696  err_as_coded=2.1496e-01  err_if_real_flipped=1.2860e-08
+    Na_wall/large      n=  39 rms=   0.9086 kT  max=   1.6177  <|dacc|>=0.0641  f(>0.1)=0.154  rms(dE_ref)=   3.006
+    Na_bulk/large      n=  68 rms=   0.6780 kT  max=   1.6602  <|dacc|>=0.0899  f(>0.1)=0.338  rms(dE_ref)=   1.988
+    Cl/large           n= 121 rms=   0.2499 kT  max=   0.9499  <|dacc|>=0.0876  f(>0.1)=0.339  rms(dE_ref)=   0.277
+    dipole/large       n=  96 rms=   0.2923 kT  max=   0.9044  <|dacc|>=0.0826  f(>0.1)=0.292  rms(dE_ref)=   0.499
+    Na_wall/small      n= 127 rms=   0.1474 kT  max=   0.2910  <|dacc|>=0.0524  f(>0.1)=0.276  rms(dE_ref)=   0.385
+    Na_bulk/small      n= 131 rms=   0.1143 kT  max=   0.3432  <|dacc|>=0.0334  f(>0.1)=0.153  rms(dE_ref)=   0.303
+    Cl/small           n= 148 rms=   0.0322 kT  max=   0.1336  <|dacc|>=0.0123  f(>0.1)=0.000  rms(dE_ref)=   0.039
+    dipole/small       n= 143 rms=   0.0499 kT  max=   0.1750  <|dacc|>=0.0179  f(>0.1)=0.014  rms(dE_ref)=   0.073
+    moves 1927.0s
+  frame 3000 (step 150050): prod recompute 2.4s
+    ref energy 5.6s
+    wall force  prod=      5.3429  flip=     11.2436  ref=     16.4772  ideal=     16.3859  logged=5.34291 kJ/(mol nm^3)
+    Na_wall/large      n=  39 rms=   0.7839 kT  max=   1.4675  <|dacc|>=0.0741  f(>0.1)=0.333  rms(dE_ref)=   2.748
+    Na_bulk/large      n=  57 rms=   0.5835 kT  max=   1.5042  <|dacc|>=0.0795  f(>0.1)=0.333  rms(dE_ref)=   1.568
+    Cl/large           n= 125 rms=   0.2664 kT  max=   0.8659  <|dacc|>=0.0956  f(>0.1)=0.392  rms(dE_ref)=   0.326
+    dipole/large       n=  96 rms=   0.3063 kT  max=   1.0618  <|dacc|>=0.0961  f(>0.1)=0.365  rms(dE_ref)=   0.532
+    Na_wall/small      n= 123 rms=   0.1345 kT  max=   0.3133  <|dacc|>=0.0530  f(>0.1)=0.276  rms(dE_ref)=   0.361
+    Na_bulk/small      n= 125 rms=   0.0934 kT  max=   0.3557  <|dacc|>=0.0252  f(>0.1)=0.056  rms(dE_ref)=   0.249
+    Cl/small           n= 141 rms=   0.0362 kT  max=   0.1323  <|dacc|>=0.0132  f(>0.1)=0.000  rms(dE_ref)=   0.043
+    dipole/small       n= 142 rms=   0.0487 kT  max=   0.1494  <|dacc|>=0.0170  f(>0.1)=0.028  rms(dE_ref)=   0.088
+    moves 1855.1s
+  frame 4000 (step 200050): prod recompute 2.4s
+    ref energy 5.7s
+    wall force  prod=      5.6111  flip=     11.3457  ref=     16.4824  ideal=     16.3859  logged=5.611051 kJ/(mol nm^3)
+    Na_wall/large      n=  48 rms=   0.8094 kT  max=   1.7090  <|dacc|>=0.0729  f(>0.1)=0.312  rms(dE_ref)=   2.712
+    Na_bulk/large      n=  62 rms=   0.5916 kT  max=   2.4237  <|dacc|>=0.0785  f(>0.1)=0.387  rms(dE_ref)=   1.837
+    Cl/large           n= 113 rms=   0.2355 kT  max=   0.7859  <|dacc|>=0.0735  f(>0.1)=0.319  rms(dE_ref)=   0.215
+    dipole/large       n= 100 rms=   0.3056 kT  max=   0.9662  <|dacc|>=0.0915  f(>0.1)=0.330  rms(dE_ref)=   0.529
+    Na_wall/small      n= 117 rms=   0.1349 kT  max=   0.2961  <|dacc|>=0.0437  f(>0.1)=0.205  rms(dE_ref)=   0.374
+    Na_bulk/small      n= 126 rms=   0.1104 kT  max=   0.3622  <|dacc|>=0.0295  f(>0.1)=0.111  rms(dE_ref)=   0.293
+    Cl/small           n= 149 rms=   0.0322 kT  max=   0.0975  <|dacc|>=0.0128  f(>0.1)=0.000  rms(dE_ref)=   0.034
+    dipole/small       n= 139 rms=   0.0602 kT  max=   0.1963  <|dacc|>=0.0183  f(>0.1)=0.022  rms(dE_ref)=   0.065
+    moves 1938.0s
+  -> /home/fluffymelon/AntiDLVO/ewald_audit/results/frames/results_prod_neutral__pz_27p6__H__ions_dipole_H_pz_27p6_H_11_sigma_-20_C_0.01_Cz_0.1_20260216_125816.json  (5939s)

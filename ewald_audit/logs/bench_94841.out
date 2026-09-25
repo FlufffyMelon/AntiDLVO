@@ -1,0 +1,20 @@
+=== old H=3 z=8.0 nproc=1 ===
+=== old H=3 z=8.0 nproc=3 ===
+=== new H=3 z=8.0 nproc=1 ===
+=== new H=3 z=8.0 nproc=3 ===
+=== old H=11 z=4.0 nproc=1 ===
+=== old H=11 z=4.0 nproc=3 ===
+=== new H=11 z=4.0 nproc=1 ===
+=== new H=11 z=4.0 nproc=3 ===
+=== parsing ===
+ variant   H  nproc  it/s/proc  it/s tot  h per 1e6 steps
+     new   3      1      27.13     27.13            10.24
+     new   3      3      24.51     73.54            11.33
+     new  11      1      17.25     17.25            16.10
+     new  11      3      14.33     42.98            19.39
+     old   3      1      30.90     30.90             8.99
+     old   3      3      28.47     85.40             9.76
+     old  11      1      20.26     20.26            13.71
+     old  11      3      18.12     54.36            15.33
+
+-> /home/fluffymelon/AntiDLVO/ewald_audit/results/bench.csv

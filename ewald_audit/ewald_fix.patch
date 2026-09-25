@@ -1,0 +1,85 @@
+--- a/src/ewald_handler.py	2026-02-24 21:13:05.797799717 +0300
++++ b/src/ewald_handler.py	2026-09-25 18:06:27.054847452 +0300
+@@ -212,9 +212,32 @@
+         b2 = 2.0 * np.pi / Ly
+         b3 = 2.0 * np.pi / Lz_scaled
+ 
+-        # Build integer grid from -n_c..n_c and exclude zero vector
+-        rng = np.arange(-self.n_c, self.n_c + 1, dtype=int)
+-        ms = np.array(np.meshgrid(rng, rng, rng, indexing="ij"))
++        # AUDIT FIX 1: anisotropic k-grid with a spherical cutoff.
++        #
++        # The original code used the same integer range -n_c..n_c on all three
++        # axes.  Because b_i = 2*pi/L_i differ by more than an order of
++        # magnitude for a slit pore (L_x = L_y = 20 nm, L_z*z_scale = 12 nm),
++        # that truncates the lateral k-sum at k_max_xy = n_c*2*pi/L_x, far
++        # below what the Gaussian requires.
++        #
++        # n_c is now interpreted as the number of k-shells along the *longest*
++        # box side, i.e. k_max = n_c * 2*pi / max(L_i); the per-axis ranges
++        # follow as n_i = ceil(k_max / b_i) and a spherical cutoff |k| <= k_max
++        # is applied so that the resolution is isotropic in k, not in indices.
++        k_max = self.n_c * 2.0 * np.pi / max(Lx, Ly, Lz_scaled)
++        self.k_max = k_max
++        nx = int(np.ceil(k_max / b1))
++        ny = int(np.ceil(k_max / b2))
++        nz = int(np.ceil(k_max / b3))
++        self.n_grid = (nx, ny, nz)
++        ms = np.array(
++            np.meshgrid(
++                np.arange(-nx, nx + 1, dtype=int),
++                np.arange(-ny, ny + 1, dtype=int),
++                np.arange(-nz, nz + 1, dtype=int),
++                indexing="ij",
++            )
++        )
+         ms = ms.reshape(3, -1).T  # (M,3)
+         mask_nonzero = ~np.all(ms == 0, axis=1)
+         ms = ms[mask_nonzero]
+@@ -226,6 +249,13 @@
+         kvecs[:, 2] = ms[:, 2] * b3
+         k_sq = np.sum(kvecs * kvecs, axis=1)
+ 
++        keep = k_sq <= k_max * k_max
++        ms, kvecs, k_sq = ms[keep], kvecs[keep], k_sq[keep]
++        print(
++            f"[EWALD] anisotropic k-grid: k_max={k_max:.4f} 1/nm "
++            f"n=({nx},{ny},{nz}) -> {len(k_sq)} k-vectors"
++        )
++
+         # Volume and A(k) coefficients - use scaled volume for k-space
+         V = float(Lx * Ly * Lz_scaled)
+         with np.errstate(divide="ignore", invalid="ignore"):
+@@ -844,8 +874,11 @@
+         updated_positions = positions.copy()
+         updated_positions[indices] = new_positions
+ 
++        # AUDIT FIX 2: this used to pass `positions` (the OLD configuration),
++        # so the slab dipole correction contributed exactly zero to every
++        # MC energy difference and to the incremental forces.
+         new_energy, new_forces = self.compute_dipole_correction_energy_forces(
+-            positions, charges, volume
++            updated_positions, charges, volume
+         )
+ 
+         return new_energy - old_energy, new_forces - old_forces
+--- a/src/forces/ewald_particle.py	2025-11-20 14:10:59.294238571 +0300
++++ b/src/forces/ewald_particle.py	2026-09-25 18:06:27.054847452 +0300
+@@ -81,9 +81,16 @@
+         prefactor = qi * qj
+         bracket = erfc_term * inv_r + (2.0 * sqrt_alpha * _INV_SQRT_PI) * exp_term
+ 
++        # AUDIT FIX 3: sign of the real-space pair force.
++        # topology._single_pair_energy_forces builds r_ij = r_j - r_i and adds
++        # the value returned here to the force on atom i, but
++        #   F_i = -dU/dr_i = q_i q_j [erfc(a r)/r + 2a/sqrt(pi) e^{-a^2 r^2}]
++        #                    * (r_i - r_j) / r^2
++        # i.e. it points along r_i - r_j = -r_ij.  Verified by finite
++        # differences (ewald_audit/scripts/frame_audit.py, fd_force section).
+         forces = np.zeros_like(r_ij)
+         forces_sel = (
+-            prefactor * bracket[:, np.newaxis] * r_ij[mask, :] * inv_r2[:, np.newaxis]
++            -prefactor * bracket[:, np.newaxis] * r_ij[mask, :] * inv_r2[:, np.newaxis]
+         )
+         forces[mask, :] = forces_sel
+ 

@@ -7,3 +7,5 @@ results*/
 *.lammps
 tests/results/
 slurm*.out
+mutagen.yml
+mutagen.yml.lock

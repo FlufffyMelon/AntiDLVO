@@ -1,0 +1,33 @@
+  cache ions_dipole_sigma_pz_17_H_3_sigma_-20_C_0.01_Cz_0.1_20260216_133324: 20000 frames, 27s
+
+### old_H3   (20000 frames, 5 blocks, H=3.0)
+      P_contact =   29.1036 +- 0.4658 MPa
+            f_s =   14.9590 +- 0.0495 MPa
+     f_s_logged =   14.9590 +- 0.0495 MPa
+            P_N =   14.1446 +- 0.4671 MPa
+            P_b =    1.2678 +- 0.0170 MPa
+             Pi =   12.8769 +- 0.4694 MPa
+      p_smeared =   27.2094 MPa
+   n_contact[Na] =    7.0014 +- 0.1222   n_mid[Na] =  0.37179 +- 0.00187 nm^-3
+   n_contact[Cl] =    0.0000 +- 0.0000   n_mid[Cl] =  0.01933 +- 0.00109 nm^-3
+   n_contact[Ip] =    0.0633 +- 0.0115   n_mid[Ip] =  0.12726 +- 0.00381 nm^-3
+   n_contact[Im] =    0.0090 +- 0.0054   n_mid[Im] =  0.14856 +- 0.00250 nm^-3
+   n_contact[ G] =    0.0000 +- 0.0000   n_mid[ G] =  0.13893 +- 0.00347 nm^-3
+  cache : 6000 frames, 8s
+
+### new_H3   (6000 frames, 5 blocks, H=3.0)
+      P_contact =   24.6739 +- 1.3846 MPa
+            f_s =   27.4495 +- 0.0287 MPa
+     f_s_logged =   27.4495 +- 0.0287 MPa
+            P_N =   -2.7756 +- 1.3654 MPa
+            P_b =    1.3093 +- 0.0465 MPa
+             Pi =   -4.0848 +- 1.3605 MPa
+      p_smeared =   27.2094 MPa
+   n_contact[Na] =    6.0212 +- 0.3484   n_mid[Na] =  0.39794 +- 0.00854 nm^-3
+   n_contact[Cl] =    0.0000 +- 0.0000   n_mid[Cl] =  0.01895 +- 0.00130 nm^-3
+   n_contact[Ip] =   -0.0162 +- 0.0180   n_mid[Ip] =  0.13153 +- 0.00723 nm^-3
+   n_contact[Im] =   -0.0079 +- 0.0041   n_mid[Im] =  0.15302 +- 0.00841 nm^-3
+   n_contact[ G] =    0.0000 +- 0.0000   n_mid[ G] =  0.14486 +- 0.00748 nm^-3
+
+-> /home/fluffymelon/AntiDLVO/ewald_audit/figures/profiles_H3.png
+-> /home/fluffymelon/AntiDLVO/ewald_audit/results/observables_H3.csv

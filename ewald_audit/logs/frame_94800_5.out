@@ -1,0 +1,119 @@
+task 5 -> results_prod_neutral/pz_17/H/ions_dipole_H_pz_17_H_5_sigma_-20_C_0.01_Cz_0.1_20260216_125433
+
+==============================================================================
+results_prod_neutral__pz_17__H__ions_dipole_H_pz_17_H_5_sigma_-20_C_0.01_Cz_0.1_20260216_125433
+==============================================================================
+[GPU_MEMORY] ensure_capacity START (capacity=2048): used=0.21 MB, total_allocated=0.21 MB
+[GPU_MEMORY] ensure_capacity INIT (Sc shape=(3374, 2048), Ss shape=(3374, 2048)): used=105.64 MB, total_allocated=105.64 MB
+
+====== TOPOLOGY CONFIGURATION SUMMARY ======
+
+Registered Types:
+  0: Na (mass=39.0983, charge=1.0)
+  1: Cl (mass=35.453, charge=-1.0)
+  2: Ip (mass=18.01528, charge=1.0)
+  3: Im (mass=18.01528, charge=-1.0)
+  4: G (mass=0.0, charge=0.0)
+  5: Wb (mass=1.0, charge=-1.0)
+  6: Wt (mass=1.0, charge=-1.0)
+
+Pair Interactions:
+  Na(0) - Na(0): HardSphere, EwaldReal
+  Cl(1) - Cl(1): HardSphere, EwaldReal
+  Na(0) - Cl(1): HardSphere, EwaldReal
+  Na(0) - Ip(2): HardSphere, EwaldReal
+  Na(0) - Im(3): HardSphere, EwaldReal
+  Cl(1) - Ip(2): HardSphere, EwaldReal
+  Cl(1) - Im(3): HardSphere, EwaldReal
+  Na(0) - G(4): HardSphere
+  Cl(1) - G(4): HardSphere
+  Ip(2) - Ip(2): HardSphere, EwaldReal
+  Im(3) - Im(3): HardSphere, EwaldReal
+  Ip(2) - Im(3): HardSphere, EwaldReal
+  Ip(2) - G(4): HardSphere
+  Im(3) - G(4): HardSphere
+  G(4) - G(4): HardSphere
+  Na(0) - Wb(5): EwaldReal
+  Cl(1) - Wb(5): EwaldReal
+  Ip(2) - Wb(5): EwaldReal
+  Im(3) - Wb(5): EwaldReal
+  Na(0) - Wt(6): EwaldReal
+  Cl(1) - Wt(6): EwaldReal
+  Ip(2) - Wt(6): EwaldReal
+  Im(3) - Wt(6): EwaldReal
+  Wb(5) - Wb(5): EwaldReal
+  Wt(6) - Wt(6): EwaldReal
+  Wb(5) - Wt(6): EwaldReal
+pair_interactions_counter: 26
+Warning: 26 pair interactions found, expected 28
+Warning: Missing pair interactions for: G-Wb, G-Wt
+
+One-Body Forces:
+  Na(0): HardWall, HardWall
+  Cl(1): HardWall, HardWall
+  Ip(2): HardWall, HardWall
+  Im(3): HardWall, HardWall
+  G(4): HardWall, HardWall
+
+==========================================
+Processing spec 1/3
+Count:   0%|          | 0/980 [00:00<?, ?it/s]Count:  63%|██████▎   | 618/980 [00:00<00:00, 6145.19it/s]Count: 100%|██████████| 980/980 [00:00<00:00, 3823.65it/s]
+Processing spec 2/3
+Count:   0%|          | 0/12 [00:00<?, ?it/s]Count: 100%|██████████| 12/12 [00:00<00:00, 1156.20it/s]
+Processing spec 3/3
+Count:   0%|          | 0/120 [00:00<?, ?it/s]Count:  25%|██▌       | 30/120 [00:00<00:01, 81.12it/s]Count:  54%|█████▍    | 65/120 [00:00<00:00, 155.93it/s]Count:  84%|████████▍ | 101/120 [00:00<00:00, 212.65it/s]Count: 100%|██████████| 120/120 [00:00<00:00, 187.48it/s]
+[GPU_MEMORY] ensure_capacity START (capacity=4096): used=105.64 MB, total_allocated=105.64 MB
+[GPU_MEMORY] ensure_capacity ALLOC (new_Sc shape=(3374, 4096), new_Ss shape=(3374, 4096)): used=316.52 MB, total_allocated=316.52 MB
+[GPU_MEMORY] ensure_capacity COPY (copied 2048 columns): used=316.52 MB, total_allocated=316.52 MB
+[GPU_MEMORY] ensure_capacity GPU_CLEANUP: used=211.08 MB, total_allocated=211.08 MB
+[GPU_MEMORY] ensure_capacity END (Sc shape=(3374, 4096), Ss shape=(3374, 4096)): used=211.08 MB, total_allocated=211.08 MB
+min_dist: 0.766100395886566
+  N_atoms=2320  box=(20.0,20.0,5.0)  eps=78.0  T=298.0
+  reference: z_scale=13.00 r_cut=9.0 alpha=0.2843 k_max=5.117 n_k=29398 grid=(17, 17, 53)
+  trajectory: 20000 frames of 2320 atoms
+  frame 2000 (step 100050): prod recompute 1.9s
+    ref energy 0.5s
+    ref check [z_scale x1.5] dE = +4.860e-09 kT  (n_k=44121)
+    ref check [r_cut 4.5   ] dE = -1.073e-08 kT  (n_k=235291)
+    ref check [eps 1e-12   ] dE = +5.868e-09 kT  (n_k=50911)
+    wall force  prod=      8.7771  flip=     15.5851  ref=     16.5463  ideal=     16.3859  logged=8.777113 kJ/(mol nm^3)
+    FD atom   968 Na  |F_fd|=22.4296  err_as_coded=2.3219e+01  err_if_real_flipped=3.3843e-06
+    FD atom  1460 Na  |F_fd|=2.2043  err_as_coded=1.3906e-01  err_if_real_flipped=6.5088e-08
+    FD atom   969 Na  |F_fd|=13.7861  err_as_coded=3.2643e+00  err_if_real_flipped=1.5705e-07
+    FD atom  1454 Na  |F_fd|=21.5570  err_as_coded=2.1837e+01  err_if_real_flipped=2.3237e-06
+    FD atom  1948 Cl  |F_fd|=1.6284  err_as_coded=2.0070e+00  err_if_real_flipped=3.6069e-08
+    FD atom  1954 Cl  |F_fd|=1.9039  err_as_coded=1.6851e-02  err_if_real_flipped=4.6760e-08
+    Na_wall/large      n=  55 rms=   0.2560 kT  max=   0.5294  <|dacc|>=0.0160  f(>0.1)=0.018  rms(dE_ref)=   2.924
+    Na_bulk/large      n=  82 rms=   0.1891 kT  max=   0.5848  <|dacc|>=0.0343  f(>0.1)=0.110  rms(dE_ref)=   1.744
+    Cl/large           n= 134 rms=   0.1257 kT  max=   0.3986  <|dacc|>=0.0320  f(>0.1)=0.052  rms(dE_ref)=   0.548
+    dipole/large       n= 104 rms=   0.0959 kT  max=   0.2904  <|dacc|>=0.0392  f(>0.1)=0.115  rms(dE_ref)=   0.408
+    Na_wall/small      n= 191 rms=   0.0497 kT  max=   0.1206  <|dacc|>=0.0145  f(>0.1)=0.000  rms(dE_ref)=   0.364
+    Na_bulk/small      n= 218 rms=   0.0407 kT  max=   0.1258  <|dacc|>=0.0127  f(>0.1)=0.000  rms(dE_ref)=   0.273
+    Cl/small           n= 239 rms=   0.0240 kT  max=   0.0705  <|dacc|>=0.0082  f(>0.1)=0.000  rms(dE_ref)=   0.077
+    dipole/small       n= 231 rms=   0.0220 kT  max=   0.0764  <|dacc|>=0.0092  f(>0.1)=0.000  rms(dE_ref)=   0.073
+    moves 13.2s
+  frame 3000 (step 150050): prod recompute 1.8s
+    ref energy 0.5s
+    wall force  prod=      8.7203  flip=     15.4031  ref=     16.4428  ideal=     16.3859  logged=8.720285 kJ/(mol nm^3)
+    Na_wall/large      n=  64 rms=   0.2784 kT  max=   0.7006  <|dacc|>=0.0292  f(>0.1)=0.047  rms(dE_ref)=   2.797
+    Na_bulk/large      n= 101 rms=   0.2051 kT  max=   0.6957  <|dacc|>=0.0312  f(>0.1)=0.059  rms(dE_ref)=   1.887
+    Cl/large           n= 135 rms=   0.1401 kT  max=   0.5168  <|dacc|>=0.0301  f(>0.1)=0.081  rms(dE_ref)=   0.631
+    dipole/large       n= 117 rms=   0.1014 kT  max=   0.3275  <|dacc|>=0.0302  f(>0.1)=0.077  rms(dE_ref)=   0.423
+    Na_wall/small      n= 178 rms=   0.0515 kT  max=   0.1719  <|dacc|>=0.0165  f(>0.1)=0.000  rms(dE_ref)=   0.346
+    Na_bulk/small      n= 195 rms=   0.0394 kT  max=   0.1085  <|dacc|>=0.0124  f(>0.1)=0.000  rms(dE_ref)=   0.279
+    Cl/small           n= 233 rms=   0.0304 kT  max=   0.0897  <|dacc|>=0.0116  f(>0.1)=0.000  rms(dE_ref)=   0.093
+    dipole/small       n= 232 rms=   0.0212 kT  max=   0.0853  <|dacc|>=0.0073  f(>0.1)=0.000  rms(dE_ref)=   0.069
+    moves 13.2s
+  frame 4000 (step 200050): prod recompute 1.8s
+    ref energy 0.5s
+    wall force  prod=      8.6883  flip=     15.4164  ref=     16.4614  ideal=     16.3859  logged=8.688304 kJ/(mol nm^3)
+    Na_wall/large      n=  74 rms=   0.2516 kT  max=   0.6968  <|dacc|>=0.0178  f(>0.1)=0.014  rms(dE_ref)=   2.991
+    Na_bulk/large      n=  86 rms=   0.1802 kT  max=   0.4828  <|dacc|>=0.0261  f(>0.1)=0.058  rms(dE_ref)=   1.741
+    Cl/large           n= 130 rms=   0.1263 kT  max=   0.3317  <|dacc|>=0.0292  f(>0.1)=0.115  rms(dE_ref)=   0.635
+    dipole/large       n= 122 rms=   0.1227 kT  max=   0.4301  <|dacc|>=0.0393  f(>0.1)=0.123  rms(dE_ref)=   0.425
+    Na_wall/small      n= 190 rms=   0.0481 kT  max=   0.1236  <|dacc|>=0.0161  f(>0.1)=0.000  rms(dE_ref)=   0.348
+    Na_bulk/small      n= 210 rms=   0.0404 kT  max=   0.1602  <|dacc|>=0.0121  f(>0.1)=0.000  rms(dE_ref)=   0.269
+    Cl/small           n= 220 rms=   0.0247 kT  max=   0.1056  <|dacc|>=0.0078  f(>0.1)=0.000  rms(dE_ref)=   0.079
+    dipole/small       n= 231 rms=   0.0223 kT  max=   0.0791  <|dacc|>=0.0075  f(>0.1)=0.000  rms(dE_ref)=   0.060
+    moves 13.2s
+  -> /home/fluffymelon/AntiDLVO/ewald_audit/results/frames/results_prod_neutral__pz_17__H__ions_dipole_H_pz_17_H_5_sigma_-20_C_0.01_Cz_0.1_20260216_125433.json  (76s)

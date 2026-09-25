@@ -1,0 +1,151 @@
+Loading configuration from ewald_audit/configs/ions_dipole_ewfix.yaml
+[GPU_MEMORY] run_simulation START: used=0.00 MB, total_allocated=0.00 MB
+[GPU_MEMORY] After create_units: used=0.00 MB, total_allocated=0.00 MB
+[EWALD] anisotropic k-grid: k_max=3.1416 1/nm n=(10,10,12) -> 5012 k-vectors
+[GPU_MEMORY] ensure_capacity START (capacity=2048): used=0.31 MB, total_allocated=0.31 MB
+[GPU_MEMORY] ensure_capacity INIT (Sc shape=(5012, 2048), Ss shape=(5012, 2048)): used=156.93 MB, total_allocated=156.93 MB
+[GPU_MEMORY] After create_system: used=156.93 MB, total_allocated=156.93 MB
+
+====== TOPOLOGY CONFIGURATION SUMMARY ======
+
+Registered Types:
+  0: Na (mass=39.0983, charge=1.0)
+  1: Cl (mass=35.453, charge=-1.0)
+  2: Ip (mass=18.01528, charge=1.0)
+  3: Im (mass=18.01528, charge=-1.0)
+  4: G (mass=0.0, charge=0.0)
+  5: Wb (mass=1.0, charge=-1.0)
+  6: Wt (mass=1.0, charge=-1.0)
+
+Pair Interactions:
+  Na(0) - Na(0): HardSphere, EwaldReal
+  Cl(1) - Cl(1): HardSphere, EwaldReal
+  Na(0) - Cl(1): HardSphere, EwaldReal
+  Na(0) - Ip(2): HardSphere, EwaldReal
+  Na(0) - Im(3): HardSphere, EwaldReal
+  Cl(1) - Ip(2): HardSphere, EwaldReal
+  Cl(1) - Im(3): HardSphere, EwaldReal
+  Na(0) - G(4): HardSphere
+  Cl(1) - G(4): HardSphere
+  Ip(2) - Ip(2): HardSphere, EwaldReal
+  Im(3) - Im(3): HardSphere, EwaldReal
+  Ip(2) - Im(3): HardSphere, EwaldReal
+  Ip(2) - G(4): HardSphere
+  Im(3) - G(4): HardSphere
+  G(4) - G(4): HardSphere
+  Na(0) - Wb(5): EwaldReal
+  Cl(1) - Wb(5): EwaldReal
+  Ip(2) - Wb(5): EwaldReal
+  Im(3) - Wb(5): EwaldReal
+  Na(0) - Wt(6): EwaldReal
+  Cl(1) - Wt(6): EwaldReal
+  Ip(2) - Wt(6): EwaldReal
+  Im(3) - Wt(6): EwaldReal
+  Wb(5) - Wb(5): EwaldReal
+  Wt(6) - Wt(6): EwaldReal
+  Wb(5) - Wt(6): EwaldReal
+pair_interactions_counter: 26
+Warning: 26 pair interactions found, expected 28
+Warning: Missing pair interactions for: G-Wb, G-Wt
+
+One-Body Forces:
+  Na(0): HardWall, HardWall
+  Cl(1): HardWall, HardWall
+  Ip(2): HardWall, HardWall
+  Im(3): HardWall, HardWall
+  G(4): HardWall, HardWall
+
+==========================================
+[GPU_MEMORY] After create_topology: used=156.93 MB, total_allocated=156.93 MB
+
+====== RANDOM_HS INITIAL PLACEMENT ======
+margin: 0.001 nm, max_attempts: 100000
+Contact distances (nm), 0 = unconstrained:
+  Na: Na=0.6630, Cl=0.7150, Ip=0.6630, Im=0.7150, G=0.5090
+  Cl: Na=0.7150, Cl=0.7670, Ip=0.7150, Im=0.7670, G=0.5610
+  Ip: Na=0.6630, Cl=0.7150, Ip=0.6630, Im=0.7150, G=0.5090
+  Im: Na=0.7150, Cl=0.7670, Ip=0.7150, Im=0.7670, G=0.5610
+  G: Na=0.5090, Cl=0.5610, Ip=0.5090, Im=0.5610, G=0.3549
+  Wb: (none)
+  Wt: (none)
+Allowed z range per type (nm):
+  Na: [0.3310, 2.6690]
+  Cl: [0.3830, 2.6170]
+  Ip: [0.3310, 2.6690]
+  Im: [0.3830, 2.6170]
+  G: [0.1770, 2.8230]
+  Wb: [0.0000, 3.0000]
+  Wt: [0.0000, 3.0000]
+Insertion order: Ip(72), Cl(7), Na(975)
+place Ip:   0%|          | 0/72 [00:00<?, ?it/s]place Ip: 100%|██████████| 72/72 [00:00<00:00, 4019.83it/s]
+  Ip: 72 molecules, 118 trials (1.6 per molecule), 0.0 s
+place Cl:   0%|          | 0/7 [00:00<?, ?it/s]place Cl: 100%|██████████| 7/7 [00:00<00:00, 9619.96it/s]
+  Cl: 7 molecules, 14 trials (2.0 per molecule), 0.0 s
+place Na:   0%|          | 0/975 [00:00<?, ?it/s]place Na:  65%|██████▍   | 631/975 [00:00<00:00, 6302.16it/s]place Na: 100%|██████████| 975/975 [00:00<00:00, 2798.43it/s]
+[GPU_MEMORY] ensure_capacity START (capacity=4096): used=156.93 MB, total_allocated=156.93 MB
+[GPU_MEMORY] ensure_capacity ALLOC (new_Sc shape=(5012, 4096), new_Ss shape=(5012, 4096)): used=470.18 MB, total_allocated=470.18 MB
+[GPU_MEMORY] ensure_capacity COPY (copied 2048 columns): used=470.18 MB, total_allocated=470.18 MB
+[GPU_MEMORY] ensure_capacity GPU_CLEANUP: used=313.56 MB, total_allocated=313.56 MB
+[GPU_MEMORY] ensure_capacity END (Sc shape=(5012, 4096), Ss shape=(5012, 4096)): used=313.56 MB, total_allocated=313.56 MB
+  Na: 975 molecules, 3667 trials (3.8 per molecule), 0.3 s
+Placement done: 2166 atoms, 3799 trials, 0.4 s
+Verification of the initial configuration:
+  atoms outside their hard-wall slab: 0
+  hard-sphere overlaps: 0
+  Na-Na: min distance 0.6634 nm, contact 0.6630 nm
+  Na-Cl: min distance 0.7243 nm, contact 0.7150 nm
+  Na-Ip: min distance 0.6706 nm, contact 0.6630 nm
+  Na-Im: min distance 0.7192 nm, contact 0.7150 nm
+  Na-G: min distance 0.6961 nm, contact 0.5090 nm
+  Cl-Cl: min distance 2.7900 nm, contact 0.7670 nm
+  Cl-Ip: min distance 0.7382 nm, contact 0.7150 nm
+  Cl-Im: min distance 0.9446 nm, contact 0.7670 nm
+  Cl-G: min distance 0.8531 nm, contact 0.5610 nm
+  Ip-Ip: min distance 0.7538 nm, contact 0.6630 nm
+  Ip-Im: min distance 0.8182 nm, contact 0.7150 nm
+  Ip-G: min distance 0.7854 nm, contact 0.5090 nm
+  Im-Im: min distance 0.8377 nm, contact 0.7670 nm
+  Im-G: min distance 0.8420 nm, contact 0.5610 nm
+  G-G: min distance 0.8124 nm, contact 0.3549 nm
+  smallest gap (distance - contact): 0.000393 nm
+==========================================
+
+[GPU_MEMORY] After setup_initial_configuration: used=313.56 MB, total_allocated=313.62 MB
+[GPU_MEMORY] After create_sampler: used=313.56 MB, total_allocated=313.62 MB
+Running 1500 Monte Carlo steps...
+[GPU_MEMORY] Before initial energy calculation: used=313.56 MB, total_allocated=313.62 MB
+Initial energy: 4167.410168 kJ/mol
+[GPU_MEMORY] After initial energy calculation: used=313.56 MB, total_allocated=562.25 MB
+MC:   0%|          | 0/1500 [00:00<?, ?it/s]MC:  10%|█         | 150/1500 [00:08<01:17, 17.39it/s]MC:  20%|██        | 300/1500 [00:17<01:09, 17.22it/s]MC:  30%|███       | 450/1500 [00:26<01:01, 17.17it/s]MC:  40%|████      | 600/1500 [00:34<00:51, 17.37it/s]MC:  50%|█████     | 750/1500 [00:43<00:42, 17.50it/s]MC:  60%|██████    | 900/1500 [00:51<00:34, 17.65it/s]MC:  70%|███████   | 1050/1500 [00:59<00:24, 18.20it/s]MC:  80%|████████  | 1200/1500 [01:04<00:14, 20.43it/s]MC:  90%|█████████ | 1350/1500 [01:10<00:06, 22.10it/s]MC: 100%|██████████| 1500/1500 [01:15<00:00, 23.50it/s]                                                       [GPU_MEMORY] Before MC chunk 1/10 (150 steps): used=313.56 MB, total_allocated=562.25 MB
+[GPU_MEMORY] After MC chunk 1/10 (N_atoms=2166, N_molecules=2022): used=313.56 MB, total_allocated=562.22 MB
+[GPU_MEMORY] Before MC chunk 2/10 (150 steps): used=313.56 MB, total_allocated=562.22 MB
+[GPU_MEMORY] After MC chunk 2/10 (N_atoms=2166, N_molecules=2022): used=313.56 MB, total_allocated=562.22 MB
+[GPU_MEMORY] Before MC chunk 3/10 (150 steps): used=313.56 MB, total_allocated=562.22 MB
+[GPU_MEMORY] After MC chunk 3/10 (N_atoms=2166, N_molecules=2022): used=313.56 MB, total_allocated=562.22 MB
+[GPU_MEMORY] Before MC chunk 4/10 (150 steps): used=313.56 MB, total_allocated=562.22 MB
+[GPU_MEMORY] After MC chunk 4/10 (N_atoms=2166, N_molecules=2022): used=313.56 MB, total_allocated=562.22 MB
+[GPU_MEMORY] Before MC chunk 5/10 (150 steps): used=313.56 MB, total_allocated=562.22 MB
+[GPU_MEMORY] After MC chunk 5/10 (N_atoms=2166, N_molecules=2022): used=313.56 MB, total_allocated=562.22 MB
+[GPU_MEMORY] Before MC chunk 6/10 (150 steps): used=313.56 MB, total_allocated=562.22 MB
+[GPU_MEMORY] After MC chunk 6/10 (N_atoms=2166, N_molecules=2022): used=313.56 MB, total_allocated=562.22 MB
+[GPU_MEMORY] Before MC chunk 7/10 (150 steps): used=313.56 MB, total_allocated=562.22 MB
+[GPU_MEMORY] After MC chunk 7/10 (N_atoms=2166, N_molecules=2022): used=313.56 MB, total_allocated=562.22 MB
+[GPU_MEMORY] Before MC chunk 8/10 (150 steps): used=313.56 MB, total_allocated=562.22 MB
+[GPU_MEMORY] After MC chunk 8/10 (N_atoms=2166, N_molecules=2022): used=313.56 MB, total_allocated=562.22 MB
+[GPU_MEMORY] Before MC chunk 9/10 (150 steps): used=313.56 MB, total_allocated=562.22 MB
+[GPU_MEMORY] After MC chunk 9/10 (N_atoms=2166, N_molecules=2022): used=313.56 MB, total_allocated=562.22 MB
+[GPU_MEMORY] Before MC chunk 10/10 (150 steps): used=313.56 MB, total_allocated=562.22 MB
+[GPU_MEMORY] After MC chunk 10/10 (N_atoms=2166, N_molecules=2022): used=313.56 MB, total_allocated=562.22 MB
+Final energy: 3780.345435 kJ/mol
+Final mean force norm: 7.299928 kJ/mol/nm
+Final number of atoms: 2166
+Final number of molecules: 2022
+Final energy (recomputed): 3780.345435 kJ/mol
+Final mean force norm (recomputed): 7.299928 kJ/mol/nm
+Energy delta (cached -> recomputed): 0.000000 kJ/mol
+Mean force norm delta (cached -> recomputed): 0.000000 kJ/mol/nm
+Acceptance ratios:
+  total: 0.0907
+  translate: 0.0907
+Results saved to: results_tmp/ewald_audit/bench/bench_new_H3_n3_s1_20260925_214851
+Simulation completed successfully!

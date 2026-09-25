@@ -1,0 +1,309 @@
+# Test configuration with dipole molecules mixed with particles
+experiment:
+  name: "ions_dipole_ewfix"
+  results_dir: "results_tmp/ewald_audit"
+  description: "Mixed system of ions and dipoles in NVT ensemble"
+
+# Control parameters
+C: 0.01 # mol/l
+Cz: 0.1 # mol/l
+L: 20.0 # nm
+H: 3.0 # nm
+pz: 27.6 # D
+sigma: -20 # µC/cm^2
+N_wall: ${eval:"round(abs(${sigma} * ${L} * ${L} / 16.020506248)**0.5)**2"}
+
+r_Na: 0.331
+r_Cl: 0.383
+r_Ip: ${r_Na}
+r_Im: ${r_Cl}
+r_G: ${eval:"${pz} / 48.032047 / 2.0"}  # nm
+
+units:
+  system: "standard"
+
+simulation:
+  ensemble: "NVT"
+  temperature: 298 # K
+  n_steps: 300000
+
+system:
+  # n_atoms: 256  # This will be used for counts or fractions, actual atom count may differ
+  initial_capacity: 2048
+  non_static_init:
+    mode: "random"
+    # min_distance: 1.0  # Increased to prevent overlaps
+    min_distance: ${eval:"2 * max(${r_Na}, ${r_Cl}, ${r_Ip}, ${r_Im}, ${r_G}) + 1e-6"}
+    padding:
+      - 0.0
+      - 0.0
+      - ${eval:"2 * max(${r_Na}, ${r_Cl}, ${r_Ip}, ${r_Im}, ${r_G}) + 1e-6"}  # Increased padding in all directions
+  static_init:
+    mode: "uniform"
+  box:
+    - ${L}
+    - ${L}
+    - ${H}
+  pbc: [true, true, false]
+
+ewald:
+  # ---- AUDIT-CORRECTED EWALD PARAMETERS -------------------------------------
+  # 1. alpha: the code evaluates erfc(sqrt(alpha)*r) and exp(-k^2/(4 alpha)),
+  #    i.e. the stored value is a^2 in the usual erfc(a r) convention.  The
+  #    production config stored a itself, so the effective splitting parameter
+  #    was sqrt(a) = 1.697 1/nm instead of 2.880 1/nm and the real-space
+  #    truncation error was erfc(1.697*1.49) = 3.4e-4, not the nominal 1e-8.
+  # 2. real_cut: limited only by the lateral minimum image, L/2 = 10 nm (z is
+  #    not periodic, pbc = [true, true, false]).  The production value 1.49 nm
+  #    was min(L,H)/2 - 0.01, i.e. it applied the H/2 limit that does not exist.
+  #    A large real cut is cheap here because the real-space kernel already
+  #    computes distances to every atom; it buys a small alpha and hence a
+  #    small k-grid.
+  # 3. n_c: with the patched handler (ewald_audit/codefix) this is the number
+  #    of k shells along the LONGEST box side; the per-axis ranges follow as
+  #    n_i = ceil(k_max L_i / 2 pi) with a spherical cutoff |k| <= k_max.
+  # 4. z_scale_factor: 4.0 leaves a vacuum gap of only H*(z-1) = 9 nm at H = 3,
+  #    which is smaller than L = 20 nm; the Yeh-Berkowitz slab correction is
+  #    not converged there (see ewald_audit/results/validate_ref.json).
+  eps: 1e-6
+  real_cut: 9.0
+  alpha: ${eval:"(sqrt(-log(${ewald.eps})) / ${ewald.real_cut})**2"}
+  n_c: ${eval:"ceil(2 * sqrt(${ewald.alpha} * (-log(${ewald.eps}))) * max(${L}, ${H} * ${ewald.z_scale_factor}) / (2 * pi))"}
+
+  dielectric: 78.0
+  z_scale_factor: 8.0
+  dipole_correction: true
+
+  use_gpu: true
+  gpu_device: 0
+
+types:
+  - Particle:
+      type: "Na"
+      mass: 39.0983 # amu
+      charge: 1.0 # e
+      # count: ${eval:"0.602214076 * ${C} * ${L} * ${L} * ${H}"}
+      count: ${eval:"0.602214076 * ${C} * ${L} * ${L} * ${H} + 2 * ${N_wall}"}
+  - Particle:
+      type: "Cl"
+      mass: 35.453 # amu
+      charge: -1.0 # e
+      count: ${eval:"0.602214076 * ${C} * ${L} * ${L} * ${H}"}
+  - Dipole:
+      type_plus: "Ip"
+      type_minus: "Im"
+      type_ghost: "G"
+      length: ${eval:"${pz} / 48.032047"}  # nm
+      ghost_count: 1
+      mass: 18.01528 # amu
+      charge: 1.0 # e
+      count: ${eval:"0.602214076 * ${Cz} * ${L} * ${L} * ${H}"}
+  - Particle:
+      type: "Wb"
+      mass: 1.0 # amu
+      # charge: ${eval:"${sigma} * 1e-3 * ${L} * ${L} / ${N_wall} / 0.1602"} # e
+      charge: -1.0
+      z: 0.0 # nm
+      count: ${N_wall}
+      static: true
+  - Particle:
+      type: "Wt"
+      mass: 1.0 # amu
+      # charge: ${eval:"${sigma} * 1e-3 * ${L} * ${L} / ${N_wall} / 0.1602"} # e
+      charge: -1.0
+      z: ${H} # nm
+      count: ${N_wall}
+      static: true
+
+pairs:
+  # ion-ion interactions
+  - types: [Na, Na]
+    forces:
+      - kind: hard_sphere
+        r1: ${r_Na}
+        r2: ${r_Na}
+      - kind: ewald
+
+  - types: [Cl, Cl]
+    forces:
+      - kind: hard_sphere
+        r1: ${r_Cl}
+        r2: ${r_Cl}
+      - kind: ewald
+
+  - types: [Na, Cl]
+    forces:
+      - kind: hard_sphere
+        r1: ${r_Na}
+        r2: ${r_Cl}
+      - kind: ewald
+
+  # ion-dipole interactions
+  - types: ["Na", "Ip"]
+    forces:
+      - kind: hard_sphere
+        r1: ${r_Na}
+        r2: ${r_Ip}
+      - kind: ewald
+
+  - types: ["Na", "Im"]
+    forces:
+      - kind: hard_sphere
+        r1: ${r_Na}
+        r2: ${r_Im}
+      - kind: ewald
+
+  - types: ["Cl", "Ip"]
+    forces:
+      - kind: hard_sphere
+        r1: ${r_Cl}
+        r2: ${r_Ip}
+      - kind: ewald
+
+  - types: ["Cl", "Im"]
+    forces:
+      - kind: hard_sphere
+        r1: ${r_Cl}
+        r2: ${r_Im}
+      - kind: ewald
+
+
+  - types: ["Na", "G"]
+    forces:
+      - kind: hard_sphere
+        r1: ${r_Na}
+        r2: ${r_G}
+
+
+  - types: ["Cl", "G"]
+    forces:
+      - kind: hard_sphere
+        r1: ${r_Cl}
+        r2: ${r_G}
+
+  # dipole-dipole interactions
+  - types: [Ip, Ip]
+    forces:
+      - kind: hard_sphere
+        r1: ${r_Ip}
+        r2: ${r_Ip}
+      - kind: ewald
+
+  - types: [Im, Im]
+    forces:
+      - kind: hard_sphere
+        r1: ${r_Im}
+        r2: ${r_Im}
+      - kind: ewald
+
+  - types: [Ip, Im]
+    forces:
+      - kind: hard_sphere
+        r1: ${r_Ip}
+        r2: ${r_Im}
+        exclude_intermol: true
+      - kind: ewald
+
+  - types: ["Ip", "G"]
+    forces:
+      - kind: hard_sphere
+        r1: ${r_Ip}
+        r2: ${r_G}
+        exclude_intermol: true
+
+  - types: ["Im", "G"]
+    forces:
+      - kind: hard_sphere
+        r1: ${r_Im}
+        r2: ${r_G}
+        exclude_intermol: true
+
+  - types: ["G", "G"]
+    forces:
+      - kind: hard_sphere
+        r1: ${r_G}
+        r2: ${r_G}
+        exclude_intermol: true
+
+  # ion/dipole-wall interactions
+  - types: ["(Na, Cl, Ip, Im)", "Wb"]
+    forces:
+      - kind: ewald
+
+  - types: ["(Na, Cl, Ip, Im)", "Wt"]
+    forces:
+      - kind: ewald
+
+  # Wall-wall interactions
+  - types: ["Wb", "Wb"]
+    forces:
+      - kind: ewald
+
+  - types: ["Wt", "Wt"]
+    forces:
+      - kind: ewald
+
+  - types: ["Wb", "Wt"]
+    forces:
+      - kind: ewald
+
+
+one_body:
+  - type: "Na"
+    forces:
+      - kind: hard_wall
+        style: bottom
+        r_wall: ${r_Na}
+      - kind: hard_wall
+        style: top
+        r_wall: ${r_Na}
+
+  - type: "Cl"
+    forces:
+      - kind: hard_wall
+        style: bottom
+        r_wall: ${r_Cl}
+      - kind: hard_wall
+        style: top
+        r_wall: ${r_Cl}
+
+  - type: "Ip"
+    forces:
+      - kind: hard_wall
+        style: bottom
+        r_wall: ${r_Ip}
+      - kind: hard_wall
+        style: top
+        r_wall: ${r_Ip}
+
+  - type: "Im"
+    forces:
+      - kind: hard_wall
+        style: bottom
+        r_wall: ${r_Im}
+      - kind: hard_wall
+        style: top
+        r_wall: ${r_Im}
+
+  - type: "G"
+    forces:
+      - kind: hard_wall
+        style: bottom
+        r_wall: ${r_G}
+      - kind: hard_wall
+        style: top
+        r_wall: ${r_G}
+
+sampler:
+  actions:
+    - action: "translate"
+      probability: 1.0
+  max_displacement: 1.0
+  max_rotation: 180
+  force_recompute: false
+
+debug: false
+
+logger:
+  log_interval: 50
+  xyz_interval: 50

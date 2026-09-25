@@ -1,0 +1,158 @@
+task 12 -> results_prod_neutral/pz_27p6/sigma/ions_dipole_sigma_pz_27p6_H_3_sigma_-15_C_0.01_Cz_0.1_20260216_125825
+
+==============================================================================
+results_prod_neutral__pz_27p6__sigma__ions_dipole_sigma_pz_27p6_H_3_sigma_-15_C_0.01_Cz_0.1_20260216_125825
+==============================================================================
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Exception ignored in: 'cupy.cuda.memory.MemoryPool.used_bytes'
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Exception ignored in: 'cupy.cuda.memory.MemoryPool.total_bytes'
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Exception ignored in: 'cupy.cuda.memory.MemoryPool.used_bytes'
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+Exception ignored in: 'cupy.cuda.memory.MemoryPool.total_bytes'
+Traceback (most recent call last):
+  File "cupy/cuda/device.pyx", line 40, in cupy.cuda.device.get_device_id
+  File "cupy_backends/cuda/api/runtime.pyx", line 202, in cupy_backends.cuda.api.runtime.getDevice
+  File "cupy_backends/cuda/api/runtime.pyx", line 146, in cupy_backends.cuda.api.runtime.check_status
+cupy_backends.cuda.api.runtime.CUDARuntimeError: cudaErrorNoDevice: no CUDA-capable device is detected
+[GPU_MEMORY] ensure_capacity START (capacity=2048): used=0.00 MB, total_allocated=0.00 MB
+[GPU_MEMORY] ensure_capacity INIT (Sc shape=(3374, 2048), Ss shape=(3374, 2048)): used=0.00 MB, total_allocated=0.00 MB
+
+====== TOPOLOGY CONFIGURATION SUMMARY ======
+
+Registered Types:
+  0: Na (mass=39.0983, charge=1.0)
+  1: Cl (mass=35.453, charge=-1.0)
+  2: Ip (mass=18.01528, charge=1.0)
+  3: Im (mass=18.01528, charge=-1.0)
+  4: G (mass=0.0, charge=0.0)
+  5: Wb (mass=1.0, charge=-1.0)
+  6: Wt (mass=1.0, charge=-1.0)
+
+Pair Interactions:
+  Na(0) - Na(0): HardSphere, EwaldReal
+  Cl(1) - Cl(1): HardSphere, EwaldReal
+  Na(0) - Cl(1): HardSphere, EwaldReal
+  Na(0) - Ip(2): HardSphere, EwaldReal
+  Na(0) - Im(3): HardSphere, EwaldReal
+  Cl(1) - Ip(2): HardSphere, EwaldReal
+  Cl(1) - Im(3): HardSphere, EwaldReal
+  Na(0) - G(4): HardSphere
+  Cl(1) - G(4): HardSphere
+  Ip(2) - Ip(2): HardSphere, EwaldReal
+  Im(3) - Im(3): HardSphere, EwaldReal
+  Ip(2) - Im(3): HardSphere, EwaldReal
+  Ip(2) - G(4): HardSphere
+  Im(3) - G(4): HardSphere
+  G(4) - G(4): HardSphere
+  Na(0) - Wb(5): EwaldReal
+  Cl(1) - Wb(5): EwaldReal
+  Ip(2) - Wb(5): EwaldReal
+  Im(3) - Wb(5): EwaldReal
+  Na(0) - Wt(6): EwaldReal
+  Cl(1) - Wt(6): EwaldReal
+  Ip(2) - Wt(6): EwaldReal
+  Im(3) - Wt(6): EwaldReal
+  Wb(5) - Wb(5): EwaldReal
+  Wt(6) - Wt(6): EwaldReal
+  Wb(5) - Wt(6): EwaldReal
+pair_interactions_counter: 26
+Warning: 26 pair interactions found, expected 28
+Warning: Missing pair interactions for: G-Wb, G-Wt
+
+One-Body Forces:
+  Na(0): HardWall, HardWall
+  Cl(1): HardWall, HardWall
+  Ip(2): HardWall, HardWall
+  Im(3): HardWall, HardWall
+  G(4): HardWall, HardWall
+
+==========================================
+Processing spec 1/3
+Count:   0%|          | 0/729 [00:00<?, ?it/s]Count:  66%|██████▋   | 484/729 [00:00<00:00, 4815.88it/s]Count: 100%|██████████| 729/729 [00:00<00:00, 1873.68it/s]
+Processing spec 2/3
+Count:   0%|          | 0/7 [00:00<?, ?it/s]Count: 100%|██████████| 7/7 [00:00<00:00, 443.36it/s]
+Processing spec 3/3
+Count:   0%|          | 0/72 [00:00<?, ?it/s]Count:   4%|▍         | 3/72 [00:00<00:02, 27.62it/s]Count:  11%|█         | 8/72 [00:00<00:01, 36.99it/s]Count:  19%|█▉        | 14/72 [00:00<00:01, 41.43it/s]Count:  26%|██▋       | 19/72 [00:00<00:02, 19.39it/s]Count:  32%|███▏      | 23/72 [00:00<00:02, 22.71it/s]Count:  38%|███▊      | 27/72 [00:01<00:03, 14.02it/s]Count:  42%|████▏     | 30/72 [00:01<00:03, 13.87it/s]Count:  46%|████▌     | 33/72 [00:02<00:03, 11.89it/s]Count:  49%|████▊     | 35/72 [00:02<00:03, 12.08it/s]Count:  53%|█████▎    | 38/72 [00:02<00:02, 14.63it/s]Count:  58%|█████▊    | 42/72 [00:02<00:01, 15.43it/s]Count:  61%|██████    | 44/72 [00:02<00:01, 14.81it/s]Count:  64%|██████▍   | 46/72 [00:02<00:01, 13.07it/s]Count:  67%|██████▋   | 48/72 [00:03<00:02,  8.62it/s]Count:  69%|██████▉   | 50/72 [00:03<00:02,  7.72it/s]Count:  75%|███████▌  | 54/72 [00:03<00:01, 10.26it/s]Count:  78%|███████▊  | 56/72 [00:04<00:02,  7.19it/s]Count:  79%|███████▉  | 57/72 [00:04<00:02,  6.87it/s]Count:  81%|████████  | 58/72 [00:04<00:02,  6.97it/s]Count:  83%|████████▎ | 60/72 [00:05<00:01,  6.74it/s]Count:  86%|████████▌ | 62/72 [00:05<00:01,  5.59it/s]Count:  88%|████████▊ | 63/72 [00:05<00:01,  4.96it/s]Count:  89%|████████▉ | 64/72 [00:06<00:01,  5.12it/s]Count:  93%|█████████▎| 67/72 [00:06<00:00,  7.97it/s]Count:  96%|█████████▌| 69/72 [00:06<00:00,  6.93it/s]Count:  99%|█████████▊| 71/72 [00:06<00:00,  8.11it/s]Count: 100%|██████████| 72/72 [00:07<00:00,  9.87it/s]
+min_dist: 0.7660474450475233
+  N_atoms=1674  box=(20.0,20.0,3.0)  eps=78.0  T=298.0
+  reference: z_scale=21.00 r_cut=9.0 alpha=0.2843 k_max=5.117 n_k=28485 grid=(17, 17, 52)
+  trajectory: 20000 frames of 1674 atoms
+  frame 2000 (step 100050): prod recompute 1.4s
+    ref energy 3.1s
+    ref check [z_scale x1.5] dE = -1.343e-08 kT  (n_k=42770)
+    ref check [r_cut 4.5   ] dE = -6.470e-10 kT  (n_k=228068)
+    ref check [eps 1e-12   ] dE = +4.899e-09 kT  (n_k=49313)
+    wall force  prod=      5.2923  flip=      9.2659  ref=      9.2529  ideal=      9.1158  logged=5.292258 kJ/(mol nm^3)
+    FD atom   722 Na  |F_fd|=3.7402  err_as_coded=3.5395e+00  err_if_real_flipped=2.4666e-07
+    FD atom  1095 Na  |F_fd|=11.8412  err_as_coded=5.6050e+00  err_if_real_flipped=2.6985e-07
+    FD atom   723 Na  |F_fd|=16.2804  err_as_coded=1.5734e+01  err_if_real_flipped=1.7046e-06
+    FD atom  1071 Na  |F_fd|=12.5655  err_as_coded=8.3601e+00  err_if_real_flipped=5.5336e-07
+    FD atom  1451 Cl  |F_fd|=5.4876  err_as_coded=2.5836e+00  err_if_real_flipped=1.2379e-07
+    FD atom  1454 Cl  |F_fd|=1.6388  err_as_coded=2.5408e+00  err_if_real_flipped=1.0833e-07
+    Na_wall/large      n=  35 rms=   0.1371 kT  max=   0.2506  <|dacc|>=0.0242  f(>0.1)=0.000  rms(dE_ref)=   2.052
+    Na_bulk/large      n=  41 rms=   0.1565 kT  max=   0.3836  <|dacc|>=0.0258  f(>0.1)=0.098  rms(dE_ref)=   1.724
+    Cl/large           n=  34 rms=   0.1529 kT  max=   0.3075  <|dacc|>=0.0422  f(>0.1)=0.088  rms(dE_ref)=   1.073
+    dipole/large       n=  18 rms=   0.1906 kT  max=   0.4259  <|dacc|>=0.0345  f(>0.1)=0.056  rms(dE_ref)=   0.941
+    Na_wall/small      n= 124 rms=   0.0201 kT  max=   0.0512  <|dacc|>=0.0076  f(>0.1)=0.000  rms(dE_ref)=   0.267
+    Na_bulk/small      n= 123 rms=   0.0253 kT  max=   0.0762  <|dacc|>=0.0095  f(>0.1)=0.000  rms(dE_ref)=   0.224
+    Cl/small           n= 125 rms=   0.0237 kT  max=   0.0956  <|dacc|>=0.0069  f(>0.1)=0.000  rms(dE_ref)=   0.144
+    dipole/small       n= 112 rms=   0.0312 kT  max=   0.0905  <|dacc|>=0.0097  f(>0.1)=0.000  rms(dE_ref)=   0.183
+    moves 137.1s
+  frame 3000 (step 150050): prod recompute 1.3s
+    ref energy 3.0s
+    wall force  prod=      5.2086  flip=      9.3124  ref=      9.2970  ideal=      9.1158  logged=5.208647 kJ/(mol nm^3)
+    Na_wall/large      n=  28 rms=   0.1026 kT  max=   0.1977  <|dacc|>=0.0250  f(>0.1)=0.000  rms(dE_ref)=   1.603
+    Na_bulk/large      n=  60 rms=   0.1745 kT  max=   0.4736  <|dacc|>=0.0395  f(>0.1)=0.150  rms(dE_ref)=   1.301
+    Cl/large           n=  41 rms=   0.1493 kT  max=   0.4504  <|dacc|>=0.0384  f(>0.1)=0.146  rms(dE_ref)=   0.964
+    dipole/large       n=  20 rms=   0.1312 kT  max=   0.2874  <|dacc|>=0.0310  f(>0.1)=0.100  rms(dE_ref)=   1.114
+    Na_wall/small      n= 126 rms=   0.0274 kT  max=   0.0672  <|dacc|>=0.0109  f(>0.1)=0.000  rms(dE_ref)=   0.273
+    Na_bulk/small      n= 130 rms=   0.0217 kT  max=   0.0667  <|dacc|>=0.0082  f(>0.1)=0.000  rms(dE_ref)=   0.202
+    Cl/small           n= 135 rms=   0.0182 kT  max=   0.0445  <|dacc|>=0.0069  f(>0.1)=0.000  rms(dE_ref)=   0.118
+    dipole/small       n= 116 rms=   0.0340 kT  max=   0.0871  <|dacc|>=0.0114  f(>0.1)=0.000  rms(dE_ref)=   0.169
+    moves 142.9s
+  frame 4000 (step 200050): prod recompute 1.3s
+    ref energy 3.0s
+    wall force  prod=      5.0291  flip=      9.3353  ref=      9.3264  ideal=      9.1158  logged=5.029133 kJ/(mol nm^3)
+    Na_wall/large      n=  40 rms=   0.1391 kT  max=   0.2720  <|dacc|>=0.0324  f(>0.1)=0.100  rms(dE_ref)=   1.553
+    Na_bulk/large      n=  37 rms=   0.1637 kT  max=   0.4158  <|dacc|>=0.0273  f(>0.1)=0.108  rms(dE_ref)=   1.330
+    Cl/large           n=  42 rms=   0.1019 kT  max=   0.2112  <|dacc|>=0.0377  f(>0.1)=0.095  rms(dE_ref)=   0.589
+    dipole/large       n=  28 rms=   0.1513 kT  max=   0.3856  <|dacc|>=0.0426  f(>0.1)=0.143  rms(dE_ref)=   1.066
+    Na_wall/small      n= 118 rms=   0.0221 kT  max=   0.0580  <|dacc|>=0.0083  f(>0.1)=0.000  rms(dE_ref)=   0.242
+    Na_bulk/small      n= 124 rms=   0.0242 kT  max=   0.0823  <|dacc|>=0.0072  f(>0.1)=0.000  rms(dE_ref)=   0.240
+    Cl/small           n= 132 rms=   0.0245 kT  max=   0.1189  <|dacc|>=0.0097  f(>0.1)=0.008  rms(dE_ref)=   0.066
+    dipole/small       n= 119 rms=   0.0394 kT  max=   0.1227  <|dacc|>=0.0137  f(>0.1)=0.008  rms(dE_ref)=   0.190
+    moves 158.6s
+  -> /home/fluffymelon/AntiDLVO/ewald_audit/results/frames/results_prod_neutral__pz_27p6__sigma__ions_dipole_sigma_pz_27p6_H_3_sigma_-15_C_0.01_Cz_0.1_20260216_125825.json  (523s)

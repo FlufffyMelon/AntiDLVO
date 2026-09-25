@@ -18,6 +18,39 @@ except ImportError:  # pragma: no cover - GPU optional
 from .units import Units
 
 
+def _get_gpu_memory_usage_mb():
+    """Get current GPU memory usage in MB. Returns (used, total_allocated)."""
+    if not CUPY_AVAILABLE:
+        return None, None
+    try:
+        mempool = cp.get_default_memory_pool()
+        used_bytes = mempool.used_bytes()
+        total_bytes = mempool.total_bytes()
+        used_mb = used_bytes / (1024 * 1024)  # Convert to MB
+        total_mb = total_bytes / (1024 * 1024)  # Convert to MB
+        return used_mb, total_mb
+    except:
+        return None, None
+
+
+def _print_memory(label: str):
+    """Print GPU memory usage with a label."""
+    used_mb, total_mb = _get_gpu_memory_usage_mb()
+    if used_mb is not None and total_mb is not None:
+        print(f"[GPU_MEMORY] {label}: used={used_mb:.2f} MB, total_allocated={total_mb:.2f} MB")
+    else:
+        # Fallback to CPU memory info if GPU not available
+        try:
+            import psutil
+            import os
+            process = psutil.Process(os.getpid())
+            mem_info = process.memory_info()
+            mem_mb = mem_info.rss / (1024 * 1024)
+            print(f"[CPU_MEMORY] {label}: {mem_mb:.2f} MB")
+        except:
+            pass
+
+
 class EwaldHandler:
     """
     Handles Ewald summation calculations and caching for electrostatic interactions.
@@ -91,9 +124,18 @@ class EwaldHandler:
         self.kvecs: Optional[np.ndarray] = None  # (K, 3)
         self.k_sq: Optional[np.ndarray] = None  # (K,)
         self.Ak: Optional[np.ndarray] = None  # (K,)
-        self.Sc: Optional[np.ndarray] = None  # (K,)
-        self.Ss: Optional[np.ndarray] = None  # (K,)
+        self.Sc: Optional[np.ndarray] = None  # (K, capacity) - structure factor cosine
+        self.Ss: Optional[np.ndarray] = None  # (K, capacity) - structure factor sine
         self.Ak_kvecs: Optional[np.ndarray] = None  # (K, 3)
+
+        # Internal capacity tracking (synchronized with System.capacity)
+        self.capacity: int = 0
+
+        # Track memory cleanup frequency to avoid calling free_all_blocks too often
+        self._memory_cleanup_counter: int = 0
+
+        # Track memory usage to decide when to free blocks
+        self._last_total_allocated: float = 0.0
 
         # Reduced Bjerrum length (for LJ units)
         self.lB_star: Optional[float] = None
@@ -108,6 +150,18 @@ class EwaldHandler:
         if array is None:
             return None
         xp = self.xp
+        # Check if array is already on the correct backend
+        if self.use_gpu and isinstance(array, cp.ndarray):
+            # Already on GPU, only convert dtype if needed
+            if dtype is None or array.dtype == dtype:
+                return array
+            return array.astype(dtype)
+        elif not self.use_gpu and isinstance(array, np.ndarray):
+            # Already on CPU, only convert dtype if needed
+            if dtype is None or array.dtype == dtype:
+                return array
+            return array.astype(dtype)
+        # Convert to appropriate backend
         return xp.asarray(array, dtype=dtype)
 
     def _to_cpu(self, array):
@@ -192,10 +246,58 @@ class EwaldHandler:
             np.ascontiguousarray(Ak_host[:, np.newaxis] * kvecs_host)
         )
 
-        # Initialize structure factors to zeros
+        # Structure factors will be initialized when system capacity is known
+        # They will be resized to match system.capacity when needed
+
+    def ensure_capacity(self, capacity: int) -> None:
+        """
+        Ensure structure factor arrays have sufficient capacity.
+        Called when system capacity changes.
+
+        Args:
+            capacity: Required capacity for structure factor arrays
+        """
+        if self.Ak is None:
+            return
+
+        _print_memory(f"ensure_capacity START (capacity={capacity})")
+
+        # Update internal capacity
+        self.capacity = capacity
+
         xp = self.xp
-        self.Sc = xp.zeros((len(self.Ak), 0), dtype=self.Ak.dtype)
-        self.Ss = xp.zeros((len(self.Ak), 0), dtype=self.Ak.dtype)
+        current_capacity = self.Sc.shape[1] if self.Sc is not None else 0
+
+        if capacity > current_capacity:
+            # Resize arrays
+            if self.Sc is None:
+                self.Sc = xp.zeros((len(self.Ak), capacity), dtype=self.Ak.dtype)
+                self.Ss = xp.zeros((len(self.Ak), capacity), dtype=self.Ak.dtype)
+                _print_memory(f"ensure_capacity INIT (Sc shape={self.Sc.shape}, Ss shape={self.Ss.shape})")
+            else:
+                # Create new arrays with larger capacity
+                new_Sc = xp.zeros((len(self.Ak), capacity), dtype=self.Ak.dtype)
+                new_Ss = xp.zeros((len(self.Ak), capacity), dtype=self.Ak.dtype)
+                _print_memory(f"ensure_capacity ALLOC (new_Sc shape={new_Sc.shape}, new_Ss shape={new_Ss.shape})")
+
+                # Copy existing data
+                new_Sc[:, :current_capacity] = self.Sc
+                new_Ss[:, :current_capacity] = self.Ss
+                _print_memory(f"ensure_capacity COPY (copied {current_capacity} columns)")
+
+                # Free old GPU memory if using CuPy
+                if self.use_gpu:
+                    del self.Sc
+                    del self.Ss
+                    try:
+                        cp.get_default_memory_pool().free_all_blocks()
+                    except:
+                        pass
+                    _print_memory("ensure_capacity GPU_CLEANUP")
+
+                self.Sc = new_Sc
+                self.Ss = new_Ss
+                _print_memory(f"ensure_capacity END (Sc shape={self.Sc.shape}, Ss shape={self.Ss.shape})")
 
     def update_structure_factors(
         self, positions: np.ndarray, charges: np.ndarray
@@ -211,9 +313,13 @@ class EwaldHandler:
             return
 
         xp = self.xp
-        if len(positions) == 0:
-            self.Sc = xp.zeros((len(self.Ak), 0), dtype=self.Ak.dtype)
-            self.Ss = xp.zeros((len(self.Ak), 0), dtype=self.Ak.dtype)
+        n_atoms = len(positions)
+
+        # Ensure capacity is sufficient (use internal capacity)
+        # if n_atoms > self.capacity:
+        #     self.ensure_capacity(n_atoms)
+
+        if n_atoms == 0:
             return
 
         positions_backend = self._to_backend(positions)
@@ -227,19 +333,20 @@ class EwaldHandler:
 
         # S_c(k) = sum_i q_i * cos(k·r_i)
         # S_s(k) = sum_i q_i * sin(k·r_i)
-        self.Sc = q * cos_kr  # (K, N)
-        self.Ss = q * sin_kr  # (K, N)
+        # Update only the active columns
+        self.Sc[:, :n_atoms] = q * cos_kr  # (K, N)
+        self.Ss[:, :n_atoms] = q * sin_kr  # (K, N)
 
-    # def update_dipole_moment(self, positions: np.ndarray, charges: np.ndarray) -> None:
-    #     """
-    #     Update the dipole moment z-component.
+        # Clean up temporary arrays if using GPU to prevent memory accumulation
+        if self.use_gpu:
+            del kr, cos_kr, sin_kr, q
+            # Periodically check memory and free blocks only if fragmentation is high
+            try:
+                mempool = cp.get_default_memory_pool()
+                mempool.free_all_blocks()
+            except:
+                pass
 
-    #     Args:
-    #         positions: Particle positions (N, 3)
-    #         charges: Particle charges (N,)
-    #     """
-    #     self.dipole_Mz = np.sum(charges * positions[:, 2])
-    #     self.dipole_Q_Gz = np.sum(charges) * np.sum(charges * positions[:, 2] ** 2)
 
     def update_structure_factors_from_delta(
         self, indices: np.ndarray, delta_S_c: np.ndarray, delta_S_s: np.ndarray
@@ -251,7 +358,239 @@ class EwaldHandler:
         self.Sc[:, idx] += self._to_backend(delta_S_c)
         self.Ss[:, idx] += self._to_backend(delta_S_s)
 
-    def compute_total_kspace_energy_forces(self) -> float:
+    def delta_kspace_energy_insertion(
+        self, new_positions: np.ndarray, charges: np.ndarray, n_atoms: int
+    ):
+        """
+        Compute k-space energy change when inserting atoms.
+
+        dU_k = lB* * sum_k A(k) * [2*(Sc_sum*dSc + Ss_sum*dSs) + dSc^2 + dSs^2]
+
+        where dSc = sum_i q_i * cos(k · r_i), dSs = sum_i q_i * sin(k · r_i)
+
+        Args:
+            new_positions: Positions of new atoms (M, 3)
+            charges: Charges of new atoms (M,)
+            n_atoms: Current number of atoms in system (before insertion)
+
+        Returns:
+            (delta_energy, new_Sc_cols, new_Ss_cols) where the columns are (K, M)
+                arrays to be appended after acceptance.
+        """
+        if self.kvecs is None or self.Ak is None:
+            return 0.0, None, None
+
+        xp = self.xp
+        pos_backend = self._to_backend(new_positions)
+        q_backend = self._to_backend(charges)
+
+        # k · r for each k-vector and each new atom: (K, M)
+        kr = self.kvecs @ pos_backend.T
+        cos_kr = xp.cos(kr)
+        sin_kr = xp.sin(kr)
+
+        # New structure factor columns: (K, M)
+        new_Sc = q_backend[xp.newaxis, :] * cos_kr
+        new_Ss = q_backend[xp.newaxis, :] * sin_kr
+
+        # Sum over new atoms to get total change: (K,)
+        dSc = xp.sum(new_Sc, axis=1)
+        dSs = xp.sum(new_Ss, axis=1)
+
+        # Current structure factor sums (only over active atoms)
+        Sc_sum = xp.sum(self.Sc[:, :n_atoms], axis=1) if n_atoms > 0 else xp.zeros(len(self.Ak))
+        Ss_sum = xp.sum(self.Ss[:, :n_atoms], axis=1) if n_atoms > 0 else xp.zeros(len(self.Ak))
+
+        # Delta energy
+        delta_energy = xp.sum(
+            self.Ak * (2.0 * (Sc_sum * dSc + Ss_sum * dSs) + dSc**2 + dSs**2)
+        )
+
+        if self.lB_star is not None:
+            delta_energy *= self.lB_star
+        else:
+            raise ValueError("Reduced Bjerrum length is not set")
+
+        # Return arrays on their current backend (GPU if using GPU, CPU if not)
+        # This avoids unnecessary GPU->CPU->GPU conversions that cause memory leaks
+        # The caller (append_structure_factors) will handle the backend conversion if needed
+        return (
+            float(self._to_cpu(delta_energy)),
+            new_Sc,  # Keep on current backend (GPU if use_gpu=True)
+            new_Ss,  # Keep on current backend (GPU if use_gpu=True)
+        )
+
+    def delta_kspace_energy_deletion(self, atom_indices: np.ndarray, n_atoms: int):
+        """
+        Compute k-space energy change when deleting atoms.
+
+        Removing atoms is equivalent to dSc = -Sc_del, dSs = -Ss_del where
+        Sc_del/Ss_del are the structure factor contributions of the removed atoms.
+
+        dU_k = lB* * sum_k A(k) * [-2*(Sc_sum*Sc_del + Ss_sum*Ss_del) + Sc_del^2 + Ss_del^2]
+
+        Args:
+            atom_indices: Global indices of atoms to delete
+            n_atoms: Current number of atoms in system (before deletion)
+
+        Returns:
+            delta_energy (float)
+        """
+        if self.kvecs is None or self.Ak is None:
+            return 0.0
+
+        xp = self.xp
+        idx = self._as_index_array(np.asarray(atom_indices, dtype=int))
+
+        # Structure factor contributions of atoms being deleted: (K,)
+        Sc_del = xp.sum(self.Sc[:, idx], axis=1)
+        Ss_del = xp.sum(self.Ss[:, idx], axis=1)
+
+        # Current total sums (only over active atoms)
+        Sc_sum = xp.sum(self.Sc[:, :n_atoms], axis=1) if n_atoms > 0 else xp.zeros(len(self.Ak))
+        Ss_sum = xp.sum(self.Ss[:, :n_atoms], axis=1) if n_atoms > 0 else xp.zeros(len(self.Ak))
+
+        # Delta energy (note the sign: dSc = -Sc_del)
+        delta_energy = xp.sum(
+            self.Ak
+            * (
+                -2.0 * (Sc_sum * Sc_del + Ss_sum * Ss_del)
+                + Sc_del**2
+                + Ss_del**2
+            )
+        )
+
+        if self.lB_star is not None:
+            delta_energy *= self.lB_star
+        else:
+            raise ValueError("Reduced Bjerrum length is not set")
+
+        return float(self._to_cpu(delta_energy))
+
+    def append_structure_factors(
+        self, new_Sc: np.ndarray, new_Ss: np.ndarray, start_idx: int
+    ) -> None:
+        """
+        Append new columns to structure factor arrays after accepted insertion.
+
+        Args:
+            new_Sc: New structure factor cosine columns (K, M)
+            new_Ss: New structure factor sine columns (K, M)
+            start_idx: Starting index where to append (current N_atoms)
+        """
+        if new_Sc is None or new_Ss is None:
+            return
+        _print_memory(f"append_structure_factors START (start_idx={start_idx}, new_Sc shape={new_Sc.shape})")
+        xp = self.xp
+        M = new_Sc.shape[1]  # Number of new columns
+        end_idx = start_idx + M
+
+        # Ensure capacity is sufficient (use internal capacity)
+        # if end_idx > self.capacity:
+        #     self.ensure_capacity(end_idx)
+
+        # Convert to backend only if needed - reuse GPU arrays if already on GPU
+        # This avoids creating unnecessary copies that fragment the memory pool
+        if self.use_gpu:
+            # If arrays are already on GPU and contiguous, reuse them directly
+            if isinstance(new_Sc, cp.ndarray) and new_Sc.flags.c_contiguous:
+                new_Sc_backend = new_Sc
+            else:
+                new_Sc_backend = self._to_backend(new_Sc)
+
+            if isinstance(new_Ss, cp.ndarray) and new_Ss.flags.c_contiguous:
+                new_Ss_backend = new_Ss
+            else:
+                new_Ss_backend = self._to_backend(new_Ss)
+        else:
+            # CPU mode - simple conversion
+            new_Sc_backend = self._to_backend(new_Sc)
+            new_Ss_backend = self._to_backend(new_Ss)
+
+        _print_memory(f"append_structure_factors CONVERTED (Sc shape={self.Sc.shape if self.Sc is not None else None})")
+
+        # Append new columns using in-place assignment
+        # Use direct assignment to avoid creating temporary views
+        self.Sc[:, start_idx:end_idx] = new_Sc_backend
+        self.Ss[:, start_idx:end_idx] = new_Ss_backend
+
+        # Clean up temporary arrays if we created new ones
+        if self.use_gpu:
+            # Only delete if we created new arrays (not if we reused existing GPU arrays)
+            if new_Sc_backend is not new_Sc:
+                del new_Sc_backend
+            if new_Ss_backend is not new_Ss:
+                del new_Ss_backend
+
+            # Memory cleanup is now handled at the MC step level in sampler.move()
+            # No need to free here to avoid re-allocation spikes during operations
+
+        _print_memory(f"append_structure_factors END (appended {M} columns)")
+
+    def remove_structure_factors(self, atom_indices: np.ndarray, n_atoms: int) -> None:
+        """
+        Remove columns from structure factor arrays after accepted deletion.
+
+        This method removes the specified columns and compacts the remaining columns
+        to maintain the mapping: column index = atom index (after system compaction).
+
+        Args:
+            atom_indices: Global indices of atoms to remove (before system compaction)
+            n_atoms: Current number of atoms in system (before deletion)
+        """
+        if len(atom_indices) == 0:
+            return
+
+        _print_memory(f"remove_structure_factors START (n_atoms={n_atoms}, removing {len(atom_indices)} atoms)")
+
+        xp = self.xp
+        atom_indices_arr = np.asarray(atom_indices, dtype=int)
+
+        # Filter to only valid indices within active range
+        valid_indices = atom_indices_arr[(atom_indices_arr >= 0) & (atom_indices_arr < n_atoms)]
+        if len(valid_indices) == 0:
+            return
+
+        # Create keep mask (more efficient than removing one by one)
+        keep_mask = np.ones(n_atoms, dtype=bool)
+        keep_mask[valid_indices] = False
+        n_keep = int(np.sum(keep_mask))
+
+        if n_keep < n_atoms:
+            # Get indices of kept columns
+            keep_indices = np.where(keep_mask)[0]
+            keep_indices_backend = self._as_index_array(keep_indices)
+
+            # Use advanced indexing to copy columns - this creates a temporary but it's necessary
+            # We'll free it immediately after use
+            if self.use_gpu:
+                # Create temporary copy using advanced indexing
+                # This is the most efficient way, but creates a temporary array
+                temp_Sc = self.Sc[:, keep_indices_backend].copy()
+                temp_Ss = self.Ss[:, keep_indices_backend].copy()
+
+                # Copy to destination
+                self.Sc[:, :n_keep] = temp_Sc
+                self.Ss[:, :n_keep] = temp_Ss
+
+                # Explicitly delete temporaries
+                del temp_Sc, temp_Ss
+                # Memory cleanup is now handled at the MC step level in sampler.move()
+            else:
+                # For CPU, advanced indexing is fine
+                self.Sc[:, :n_keep] = self.Sc[:, keep_indices_backend]
+                self.Ss[:, :n_keep] = self.Ss[:, keep_indices_backend]
+
+            # Zero out the tail
+            self.Sc[:, n_keep:n_atoms] = 0.0
+            self.Ss[:, n_keep:n_atoms] = 0.0
+
+            # Memory cleanup is now handled at the MC step level in sampler.move()
+            # This prevents re-allocation spikes during operations
+
+            _print_memory(f"remove_structure_factors END (kept {n_keep}/{n_atoms} atoms)")
+
+    def compute_total_kspace_energy_forces(self, n_atoms: int) -> float:
         """
         Compute the total k-space energy for the entire system.
 
@@ -259,20 +598,28 @@ class EwaldHandler:
 
         F_k = -(4π/V) ∑_{k≠0} [exp(-k²/(4α²))/k²] * q_i * [sin(k·r_i) * S_c - cos(k·r_i) * S_s]
 
+        Args:
+            n_atoms: Current number of atoms in system
+
         Returns:
-            Total k-space energy
+            (energy, forces) tuple
         """
         if self.Ak is None or self.Sc is None or self.Ss is None:
-            return 0.0
+            return 0.0, np.zeros((n_atoms, 3))
 
         xp = self.xp
         # |S(k)|² = S_c(k)² + S_s(k)²
-        Sc_sum = xp.sum(self.Sc, axis=1)  # (K,)
-        Ss_sum = xp.sum(self.Ss, axis=1)  # (K,)
+        # Sum only over active atoms
+        Sc_sum = xp.sum(self.Sc[:, :n_atoms], axis=1) if n_atoms > 0 else xp.zeros(len(self.Ak))  # (K,)
+        Ss_sum = xp.sum(self.Ss[:, :n_atoms], axis=1) if n_atoms > 0 else xp.zeros(len(self.Ak))  # (K,)
         energy = xp.sum(self.Ak * (Sc_sum**2 + Ss_sum**2))
 
-        force_struct = Sc_sum[:, xp.newaxis] * self.Ss - Ss_sum[:, xp.newaxis] * self.Sc
-        forces = 2 * force_struct.T @ self.Ak_kvecs  # (N, 3)
+        # Forces only for active atoms
+        if n_atoms > 0:
+            force_struct = Sc_sum[:, xp.newaxis] * self.Ss[:, :n_atoms] - Ss_sum[:, xp.newaxis] * self.Sc[:, :n_atoms]
+            forces = 2 * force_struct.T @ self.Ak_kvecs  # (N, 3)
+        else:
+            forces = np.zeros((0, 3))
 
         # Scale by reduced Bjerrum length for LJ units
         if self.lB_star is not None:
@@ -354,100 +701,6 @@ class EwaldHandler:
 
         return energy, forces
 
-    # def delta_kspace_energy(
-    #     self,
-    #     indices: np.ndarray = None,
-    #     positions: np.ndarray = None,
-    #     new_positions: np.ndarray = None,
-    #     # old_positions: np.ndarray = None,
-    #     charges: np.ndarray = None,
-    # ):
-    #     """
-    #     Compute the change in k-space energy due to translation, addition, or deletion of a M particles.
-
-    #     ΔS_c(k) = q_i [cos(k·r_new) - cos(k·r_old)]
-    #     ΔS_s(k) = q_i [sin(k·r_new) - sin(k·r_old)]
-
-    #     ΔU_k = (2π / V) Σ_{k≠0} A(k) [ 2( S_c ΔS_c + S_s ΔS_s ) + (ΔS_c^2 + ΔS_s^2) ].
-
-    #     Args:
-    #         new_position: New particle position (M, 3)
-    #         old_position: Old particle position (M, 3)
-    #         charge: Particle charge (M,)
-    #     """
-    #     if charges is None:
-    #         raise ValueError("Charge must be provided")
-
-    #     # if new_positions is None and old_positions is None:
-    #     #     raise ValueError("Either new_position or old_position must be provided")
-
-    #     additional_indices = np.setdiff1d(np.arange(len(positions)), indices)
-
-    #     new_c, new_s, old_c, old_s = 0, 0, 0, 0
-
-    #     old_positions = positions[indices].copy()
-
-    #     if new_positions is not None:
-    #         new_c = np.cos(self.kvecs @ new_positions.T)
-    #         new_s = np.sin(self.kvecs @ new_positions.T)
-    #     if old_positions is not None:
-    #         old_c = np.cos(self.kvecs @ old_positions.T)
-    #         old_s = np.sin(self.kvecs @ old_positions.T)
-
-    #     delta_S_c = charges * (new_c - old_c)
-    #     delta_S_s = charges * (new_s - old_s)
-
-    #     # |S(k)|² = S_c(k)² + S_s(k)²
-    #     Sc_sum = np.sum(self.Sc, axis=1)  # (K,)
-    #     Ss_sum = np.sum(self.Ss, axis=1)  # (K,)
-
-    #     dot_product = Sc_sum * np.sum(delta_S_c, axis=1) + Ss_sum * np.sum(
-    #         delta_S_s, axis=1
-    #     )
-
-    #     delta_S_squared = (
-    #         np.sum(delta_S_c, axis=1) ** 2 + np.sum(delta_S_s, axis=1) ** 2
-    #     )
-
-    #     delta_energy = np.sum(self.Ak * (2 * dot_product + delta_S_squared))
-
-    #     # ----------------------------------------------------------------
-
-    #     delta_forces = np.zeros_like(positions)
-
-    #     # Changes in forces of old new atoms
-    #     force_coef = self.Ak * ((self.Sc + delta_S_c) * -Sc_sum * self.Ss)  # (K, N)
-
-    #     delta_forces = -2 * np.sum(
-    #         force_coef[:, :, np.newaxis] * self.kvecs[np.newaxis, :, :], axis=0
-    #     )  # (N, 3)
-
-    #     # Changes in forces of all other atoms due to the structure factor changing
-    #     force_coef = self.Ak * (Ss_sum * delta_S_c - Sc_sum * delta_S_s)  # (K, N)
-    #     forces = 2 * np.sum(
-    #         force_coef[:, :, np.newaxis] * self.kvecs[np.newaxis, :, :], axis=0
-    #     )  # (N, 3)
-    #     # ------------------
-
-    #     # ----------------
-    #     # |S(k)|² = S_c(k)² + S_s(k)²
-    #     Sc_sum = np.sum(self.Sc, axis=1)  # (K,)
-    #     Ss_sum = np.sum(self.Ss, axis=1)  # (K,)
-    #     energy = np.sum(self.Ak * (Sc_sum**2 + Ss_sum**2))
-
-    #     force_coef = self.Ak * (Ss_sum * self.Sc - Sc_sum * self.Ss)  # (K, N)
-    #     forces = -2 * np.sum(
-    #         force_coef[:, :, np.newaxis] * self.kvecs[np.newaxis, :, :], axis=0
-    #     )  # (N, 3)
-    #     # ------------------
-
-    #     if self.lB_star is not None:
-    #         delta_energy *= self.lB_star
-    #     else:
-    #         raise ValueError("Reduced Bjerrum length is not set")
-
-    #     return delta_energy, delta_S_c, delta_S_s
-
     def delta_kspace_energy_forces(
         self,
         indices: np.ndarray = None,
@@ -493,9 +746,11 @@ class EwaldHandler:
         delta_S_c = charges_backend * (new_c - old_c)
         delta_S_s = charges_backend * (new_s - old_s)
 
-        # |S(k)|² = S_c(k)² + S_s(k)²
-        Sc_sum = xp.sum(self.Sc, axis=1)  # (K,)
-        Ss_sum = xp.sum(self.Ss, axis=1)  # (K,)
+        # |S(k)|² = S_c(k)² + S_s(k)² (sum only over active atoms)
+        # Get n_atoms from positions array
+        n_atoms = positions_np.shape[0]
+        Sc_sum = xp.sum(self.Sc[:, :n_atoms], axis=1) if n_atoms > 0 else xp.zeros(len(self.Ak))  # (K,)
+        Ss_sum = xp.sum(self.Ss[:, :n_atoms], axis=1) if n_atoms > 0 else xp.zeros(len(self.Ak))  # (K,)
 
         dot_product = Sc_sum * xp.sum(delta_S_c, axis=1) + Ss_sum * xp.sum(
             delta_S_s, axis=1
@@ -559,91 +814,6 @@ class EwaldHandler:
             self._to_cpu(delta_S_c),
             self._to_cpu(delta_S_s),
         )
-
-    # def delta_self_energy(self, charge: float) -> float:
-    #     """
-    #     Compute the change in self-energy correction due to translation, addition, or deletion of a particle.
-    #     """
-    #     if self.alpha is None:
-    #         return 0.0
-
-    #     delta_self_energy = -np.sqrt(self.alpha / np.pi) * charge**2
-
-    #     if self.lB_star is not None:
-    #         delta_self_energy *= self.lB_star
-    #     else:
-    #         raise ValueError("Reduced Bjerrum length is not set")
-
-    #     return delta_self_energy
-
-    # def delta_dipole_correction(
-    #     self,
-    #     positions: np.ndarray = None,
-    #     charges_full: np.ndarray = None,
-    #     new_positions: np.ndarray = None,
-    #     old_positions: np.ndarray = None,
-    #     charges: np.ndarray = None,
-    #     volume: float = None,
-    # ) -> float:
-    #     """
-    #     M_new = M_old - q * z_old + q * z_new
-    #     ΔM_z^2 = M_new^2 - M_old^2 = (2 * M_old + q * z_new - q * z_old) * (q * z_new - q * z_old)
-    #     ΔG_z = - Q * q * (z_new^2 - z_old^2)
-    #     ΔU_c = -2π/V * ΔM_z^2
-
-    #     Args:
-    #         new_position: New particle position (M, 3)
-    #         old_position: Old particle position (M, 3)
-    #         charge: Particle charge (M,)
-    #         volume: System volume
-
-    #     Returns:
-    #         Change in dipole correction energy
-    #     """
-    #     if not self.dipole_correction:
-    #         return 0.0
-
-    #     # Apply z_scale_factor to volume for dipole correction
-    #     scaled_volume = volume * self.z_scale_factor
-
-    #     dipole_Mz = np.sum(charges_full * positions[:, 2])
-    #     total_charge = np.sum(charges_full)
-    #     # dipole_Q_Gz = np.sum(charges_full) * np.sum(charges_full * positions[:, 2] ** 2)
-
-    #     if new_positions is not None and old_positions is not None:
-    #         delta_Mz_squared = (
-    #             2 * dipole_Mz
-    #             + np.sum(charges * (new_positions[:, 2] - old_positions[:, 2]))
-    #         ) * np.sum(charges * (new_positions[:, 2] - old_positions[:, 2]))
-
-    #         delta_Gz = np.sum(
-    #             charges * (new_positions[:, 2] ** 2 - old_positions[:, 2] ** 2)
-    #         )
-    #     elif new_positions is not None:
-    #         delta_Mz_squared = (
-    #             2 * dipole_Mz + np.sum(charges * new_positions[:, 2])
-    #         ) * np.sum(charges * new_positions[:, 2])
-
-    #         delta_Gz = np.sum(charges * new_positions[:, 2] ** 2)
-    #     elif old_positions is not None:
-    #         delta_Mz_squared = -(
-    #             2 * dipole_Mz - np.sum(charges * old_positions[:, 2])
-    #         ) * np.sum(charges * old_positions[:, 2])
-
-    #         delta_Gz = -np.sum(charges * old_positions[:, 2] ** 2)
-    #     else:
-    #         raise ValueError("Either new_positions or old_positions must be provided")
-
-    #     delta_dipole_energy = (
-    #         2.0 * np.pi * (delta_Mz_squared - total_charge * delta_Gz) / scaled_volume
-    #     )
-
-    #     if self.lB_star is not None:
-    #         delta_dipole_energy *= self.lB_star
-    #     else:
-    #         raise ValueError("Reduced Bjerrum length is not set")
-
-    #     return delta_dipole_energy
 
     def delta_dipole_correction_energy_forces(
         self,
