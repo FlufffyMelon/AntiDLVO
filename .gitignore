@@ -9,3 +9,23 @@ tests/results/
 slurm*.out
 mutagen.yml
 mutagen.yml.lock
+
+# Editor / tooling / OS droppings
+.DS_Store
+.serena/
+_claude_tmp/
+.claude/worktrees/
+prof
+*.bak_*
+
+# Job logs from the mipt scripts
+mipt/logs/
+
+# --- exceptions to the broad rules above -------------------------------------
+# `*.txt` would otherwise swallow the pinned dependency list, and `results*/`
+# and `*.png` the audit data and figures that the report cites.  A negation on
+# a directory is required before git will even descend into it.
+!requirements*.txt
+!ewald_audit/results/
+!ewald_audit/**/*.txt
+!ewald_audit/**/*.png

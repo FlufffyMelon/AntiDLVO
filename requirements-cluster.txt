@@ -1,0 +1,23 @@
+# Runtime environment for the MC code on a GPU cluster.
+#
+# Pinned to the versions of the working softcluster venv (Python 3.13.2) so
+# that a rebuild elsewhere -- e.g. mipt/node211-27 -- reproduces it exactly.
+# Only what src/ + mc_main.py actually import, plus matplotlib for the
+# ewald_audit/ plotting scripts.  Install with:
+#
+#     uv venv --python 3.13 .venv
+#     uv pip install --python .venv/bin/python -r requirements-cluster.txt
+#
+# cupy-cuda12x needs a CUDA 12.x runtime visible at import time (libnvrtc.so.12
+# in particular); on mipt that comes from `module load cuda/12.9`.
+
+numpy==2.3.2
+scipy==1.16.1
+pandas==2.3.1
+omegaconf==2.3.0
+Pint==0.24.4
+PyYAML==6.0.2
+psutil==7.0.0
+tqdm==4.67.1
+matplotlib==3.10.5
+cupy-cuda12x==13.6.0
