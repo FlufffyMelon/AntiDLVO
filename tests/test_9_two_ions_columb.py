@@ -129,8 +129,14 @@ class TestTwoIonsColumb(BaseEwaldTest):
 
         # Create a new system and topology using the modified config
         coulomb_topology = create_topology(coulomb_cfg, self.units)
-        coulomb_system = copy.deepcopy(self.system)
-        coulomb_system.ewald_handler = None
+        # Detach the Ewald handler before copying, not after: it holds the
+        # array module itself (np or cp), which deepcopy cannot pickle, and
+        # this copy is going to run direct Coulomb summation anyway.
+        handler, self.system.ewald_handler = self.system.ewald_handler, None
+        try:
+            coulomb_system = copy.deepcopy(self.system)
+        finally:
+            self.system.ewald_handler = handler
 
         # Calculate the energy using the Coulomb topology
         columb_energy, _ = coulomb_topology.compute_energy_forces(coulomb_system)
