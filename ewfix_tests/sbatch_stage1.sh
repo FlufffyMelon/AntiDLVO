@@ -21,7 +21,10 @@
 
 set -euo pipefail
 cd "$SLURM_SUBMIT_DIR"
-mkdir -p ewfix_tests/logs ewfix_tests/frames results_tmp/ewfix_tests
+# A fresh directory per job: check_regression globs the whole directory, so a
+# rerun must not be judged on the previous run's frames.
+FRAMES=${FRAMES:-ewfix_tests/frames_${SLURM_JOB_ID:-manual}}
+mkdir -p ewfix_tests/logs "$FRAMES" results_tmp/ewfix_tests
 
 module load cuda/12.9
 echo "node: $(hostname)"
@@ -66,7 +69,7 @@ for H in "${HS[@]}"; do
     RUN=$(ls -dt results_tmp/ewfix_tests/verify_H_${H}_*/ | head -1)
     echo "H=$H -> $RUN"
     CUDA_VISIBLE_DEVICES=$i "$PY" ewald_audit/scripts/frame_audit.py "$RUN" \
-        --frames 40 70 --n-moves 250 --gpu 1 --out ewfix_tests/frames \
+        --frames 40 70 --n-moves 250 --gpu 1 --out "$FRAMES" \
         --tag-prefix "ewfix_H${H}_" \
         > ewfix_tests/logs/verify_audit_H$H.out 2>&1 &
     pids+=($!)
@@ -78,4 +81,4 @@ done
 
 echo
 echo "############ 4. verdict ############"
-"$PY" ewfix_tests/check_regression.py ewfix_tests/frames
+"$PY" ewfix_tests/check_regression.py "$FRAMES"

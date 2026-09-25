@@ -19,9 +19,9 @@ import sys
 
 HOURS_1E6 = 1_000_000 / 3600.0  # steps -> (steps/s) -> hours, divided by rate
 
-FIELDS = ("label", "H", "nproc", "ngpu", "n_proc_total", "rate_mean", "rate_min",
-          "rate_max", "rate_total", "hours_1e6_slowest", "gpu_util_pct",
-          "gpu_mem_mb", "n_parsed")
+FIELDS = ("label", "H", "nproc", "ngpu", "threads", "n_proc_total", "rate_mean",
+          "rate_min", "rate_max", "rate_total", "hours_1e6_slowest",
+          "gpu_util_pct", "gpu_mem_mb", "n_parsed")
 
 
 def rate_of(run_dir: str, warmup_frac: float = 0.4):
@@ -91,6 +91,8 @@ def main(argv=None):
     ap.add_argument("--H", type=float)
     ap.add_argument("--nproc", type=int)
     ap.add_argument("--ngpu", type=int, default=1)
+    ap.add_argument("--threads", type=int, default=0,
+                    help="OMP_NUM_THREADS used; 0 means it was left unset")
     ap.add_argument("--dmon")
     ap.add_argument("--append")
     ap.add_argument("--report")
@@ -99,13 +101,14 @@ def main(argv=None):
     if args.report:
         with open(args.report) as fh:
             rows = list(csv.DictReader(fh))
-        print(f"{'label':<16} {'H':>4} {'proc/gpu':>8} {'gpu':>4} {'procs':>6} "
-              f"{'it/s each':>10} {'min':>8} {'it/s node':>10} "
+        print(f"{'label':<18} {'H':>4} {'proc/gpu':>8} {'gpu':>4} {'thr':>4} "
+              f"{'procs':>6} {'it/s each':>10} {'min':>8} {'it/s node':>10} "
               f"{'h per 1e6':>10} {'sm%':>6} {'fb MB':>8}")
-        print("-" * 104)
+        print("-" * 110)
         for r in rows:
-            print(f"{r['label']:<16} {float(r['H']):>4.0f} {r['nproc']:>8} "
-                  f"{r['ngpu']:>4} {r['n_proc_total']:>6} "
+            print(f"{r['label']:<18} {float(r['H']):>4.0f} {r['nproc']:>8} "
+                  f"{r['ngpu']:>4} {r.get('threads', '?'):>4} "
+                  f"{r['n_proc_total']:>6} "
                   f"{float(r['rate_mean']):>10.2f} {float(r['rate_min']):>8.2f} "
                   f"{float(r['rate_total']):>10.1f} "
                   f"{float(r['hours_1e6_slowest']):>10.2f} "
@@ -123,7 +126,7 @@ def main(argv=None):
     slowest = min(rates)
     row = dict(
         label=args.label, H=args.H, nproc=args.nproc, ngpu=args.ngpu,
-        n_proc_total=len(rates),
+        threads=args.threads, n_proc_total=len(rates),
         rate_mean=round(sum(rates) / len(rates), 3),
         rate_min=round(slowest, 3), rate_max=round(max(rates), 3),
         rate_total=round(sum(rates), 3),

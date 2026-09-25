@@ -18,6 +18,12 @@
 # chosen density across all four cards at once -- four cards contend for the
 # same 128 CPU cores, so per-card numbers do not simply add up.
 #
+# Thread count is a variable here, not a default. The node has 128 cores, so a
+# 32-process production packing leaves 4 cores per process; if the BLAS inside
+# each process still believes it owns all 128, the oversubscription is what we
+# would be measuring. Points tagged t0 leave OMP_NUM_THREADS unset, the rest
+# pin it, so the effect is visible rather than assumed.
+#
 # The rate is read from simulation_data.csv (step and time_s), not from tqdm:
 # it survives redirection and lets the warm-up be discarded exactly.
 
@@ -29,15 +35,25 @@ module load cuda/12.9
 echo "node: $(hostname)  cores: $(nproc)"
 nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader
 PY=$PWD/.venv/bin/python
+CSV=ewfix_tests/bench/bench.csv
 
 N_STEPS=${N_STEPS:-2500}
 
-# One measurement point: $1 = H, $2 = processes per GPU, $3 = GPU list.
+# measure <H> <proc per gpu> <gpu list> <threads, 0 = leave unset>
 measure() {
-    local H=$1 NPROC=$2 GPUS=$3
-    local tag="H${H}_n${NPROC}_g$(echo "$GPUS" | tr -d ',')"
+    local H=$1 NPROC=$2 GPUS=$3 OMP=$4
+    local ngpu; ngpu=$(echo "$GPUS" | tr ',' '\n' | grep -c .)
+    local tag="H${H}_n${NPROC}_g${ngpu}_t${OMP}"
     echo
-    echo "=== H=$H  ${NPROC} proc/GPU  on GPUs [$GPUS] ==="
+    echo "=== H=$H  ${NPROC} proc/GPU  ${ngpu} GPU  threads=${OMP} ==="
+
+    if [ "$OMP" != "0" ]; then
+        export OMP_NUM_THREADS=$OMP MKL_NUM_THREADS=$OMP \
+               OPENBLAS_NUM_THREADS=$OMP NUMEXPR_NUM_THREADS=$OMP
+    else
+        unset OMP_NUM_THREADS MKL_NUM_THREADS \
+              OPENBLAS_NUM_THREADS NUMEXPR_NUM_THREADS || true
+    fi
 
     nvidia-smi dmon -s um -d 5 -o T > "ewfix_tests/bench/dmon_${tag}.txt" 2>&1 &
     local dmon=$!
@@ -57,34 +73,45 @@ measure() {
     done
 
     local t0=$SECONDS
-    for pid in "${pids[@]}"; do wait "$pid" || echo "  a process FAILED" >&2; done
-    echo "  wall: $((SECONDS - t0)) s for ${#pids[@]} processes"
+    local bad=0
+    for pid in "${pids[@]}"; do wait "$pid" || bad=$((bad + 1)); done
+    echo "  wall $((SECONDS - t0)) s for ${#pids[@]} processes, ${bad} failed"
 
     kill "$dmon" 2>/dev/null || true
     wait "$dmon" 2>/dev/null || true
 
+    uptime
     "$PY" ewfix_tests/parse_bench.py \
         --pattern "results_tmp/ewfix_tests/bench/bench_${tag}_*" \
-        --label "$tag" --H "$H" --nproc "$NPROC" \
-        --ngpu "$(echo "$GPUS" | tr ',' '\n' | grep -c .)" \
-        --dmon "ewfix_tests/bench/dmon_${tag}.txt" \
-        --append ewfix_tests/bench/bench.csv
+        --label "$tag" --H "$H" --nproc "$NPROC" --ngpu "$ngpu" \
+        --threads "$OMP" --dmon "ewfix_tests/bench/dmon_${tag}.txt" \
+        --append "$CSV" || true
 }
 
+echo "################ does the thread count matter? ################"
+# One process owns the machine; many processes have to share it. If threading
+# helps in the first case and hurts in the second, the packing plan has to say
+# so explicitly.
+measure 3 1 0 0
+measure 3 1 0 1
+measure 3 8 0 0
+measure 3 8 0 1
+
+echo
 echo "################ single card, scaling with process count ################"
 for H in 3 11; do
     for N in 1 2 4 8 16; do
-        measure "$H" "$N" 0
+        measure "$H" "$N" 0 1
     done
 done
 
 echo
-echo "################ all four cards at the packing under consideration ################"
+echo "################ all four cards ################"
 for N in ${FULL_NODE_N:-4 8}; do
-    measure 3 "$N" 0,1,2,3
-    measure 11 "$N" 0,1,2,3
+    measure 3 "$N" 0,1,2,3 1
+    measure 11 "$N" 0,1,2,3 1
 done
 
 echo
 echo "################ summary ################"
-"$PY" ewfix_tests/parse_bench.py --report ewfix_tests/bench/bench.csv
+"$PY" ewfix_tests/parse_bench.py --report "$CSV"
