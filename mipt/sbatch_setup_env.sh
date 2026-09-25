@@ -61,14 +61,26 @@ print("\ngpu:", props["name"].decode(), "cc",
       f"{props['major']}.{props['minor']}",
       "| CUDA runtime", cp.cuda.runtime.runtimeGetVersion())
 
-# A real kernel launch plus the special function the Ewald real-space sum
-# needs -- an import alone would not catch a broken libnvrtc.
-a = cp.random.random((2048, 2048), dtype=cp.float64)
-assert abs(float((a @ a.T).sum()) - float((a @ a.T).sum())) == 0.0
-r = cp.linspace(0.1, 5.0, 1000, dtype=cp.float64)
-e = cp.asnumpy(cp.special.erfc(r) / r)
-print("erfc(r)/r at r=0.1:", float(e[0]))
-print("OK: cupy compiles and runs on this device")
+# Real kernel launches, cross-checked against NumPy -- an import alone would
+# not catch a broken libnvrtc or a compute-capability mismatch.  These are the
+# double-precision operations the reciprocal-space Ewald sum is built from
+# (the real-space part runs on the CPU through scipy).
+import numpy as np
+rng = np.random.default_rng(0)
+pos = rng.random((4096, 3))
+kv = rng.random((3, 512))
+
+phase_c = np.exp(-0.25 * (pos @ kv) ** 2) * np.cos(pos @ kv)
+sf_c = phase_c.sum(axis=0)
+
+g_pos, g_kv = cp.asarray(pos), cp.asarray(kv)
+g_kr = g_pos @ g_kv
+sf_g = cp.asnumpy((cp.exp(-0.25 * g_kr ** 2) * cp.cos(g_kr)).sum(axis=0))
+
+err = float(np.max(np.abs(sf_g - sf_c)) / np.max(np.abs(sf_c)))
+print(f"\ngpu-vs-cpu structure factor, max relative error: {err:.3e}")
+assert err < 1e-12, "CuPy disagrees with NumPy in double precision"
+print("OK: cupy compiles and runs correctly on this device")
 PY
 
 echo
